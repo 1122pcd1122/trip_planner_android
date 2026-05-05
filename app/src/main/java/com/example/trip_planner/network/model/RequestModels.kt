@@ -1,5 +1,9 @@
 package com.example.trip_planner.network.model
 
+import android.annotation.SuppressLint
+import com.example.trip_planner.ui.screens.PoiModel
+import kotlinx.serialization.Serializable
+
 /**
  * API 统一响应格式
  * 后端所有接口都返回这种格式的 JSON
@@ -19,12 +23,16 @@ data class ApiResponse(
  * 用于 generateTripPlan 接口
  *
  * @property destination 目的地
- * @property days 旅行天数
+ * @property days 旅行天数（兼容旧版）
+ * @property startDate 开始日期 YYYY-MM-DD（新版）
+ * @property endDate 结束日期 YYYY-MM-DD（新版）
  * @property preferences 用户偏好
  */
 data class TripPlanRequest(
     val destination: String,
-    val days: String,
+    val days: String = "1",
+    val startDate: String = "",
+    val endDate: String = "",
     val preferences: String
 )
 
@@ -133,6 +141,30 @@ data class HotelResponse(val hotelList: List<HotelInfoDto>)
  */
 data class RestaurantResponse(val foodList: List<RestaurantInfoDto>)
 
+/**
+ * 景点数据组合响应（原始数据 + PoiModel）
+ */
+data class AttractionData(
+    val spotInfoList: List<SpotInfo>,
+    val poiList: List<PoiModel>
+)
+
+/**
+ * 酒店数据组合响应（原始数据 + PoiModel）
+ */
+data class HotelData(
+    val hotelInfoList: List<HotelInfoDto>,
+    val poiList: List<PoiModel>
+)
+
+/**
+ * 餐厅数据组合响应（原始数据 + PoiModel）
+ */
+data class RestaurantData(
+    val restaurantInfoList: List<RestaurantInfoDto>,
+    val poiList: List<PoiModel>
+)
+
 
 /**
  * 行程项（每个时间点的安排）
@@ -142,6 +174,8 @@ data class RestaurantResponse(val foodList: List<RestaurantInfoDto>)
  * @property latitude 纬度
  * @property longitude 经度
  */
+@SuppressLint("UnsafeOptInUsageError")
+@Serializable
 data class ItineraryItem(
     val time: String,
     val spot: String,
@@ -156,6 +190,8 @@ data class ItineraryItem(
  * @property address 地址
  * @property dish 招牌菜
  */
+@SuppressLint("UnsafeOptInUsageError")
+@Serializable
 data class MealInfo(
     val name: String,
     val address: String,
@@ -167,6 +203,8 @@ data class MealInfo(
  * @property lunch 午餐
  * @property dinner 晚餐
  */
+@SuppressLint("UnsafeOptInUsageError")
+@Serializable
 data class DayMeals(
     val lunch: MealInfo?,
     val dinner: MealInfo?
@@ -181,6 +219,8 @@ data class DayMeals(
  * @property meals 餐饮安排
  * @property tips 出行建议
  */
+@SuppressLint("UnsafeOptInUsageError")
+@Serializable
 data class DayPlan(
     val dayNum: Int,
     val date: String,
@@ -199,6 +239,8 @@ data class DayPlan(
  * @property latitude 纬度
  * @property longitude 经度
  */
+@SuppressLint("UnsafeOptInUsageError")
+@Serializable
 data class PlanHotel(
     val name: String,
     val address: String,
@@ -234,3 +276,63 @@ sealed class AgentResult<out T> {
     data class Error(val message: String) : AgentResult<Nothing>()
     object Loading : AgentResult<Nothing>()
 }
+
+data class DetailRequest(
+    val name: String,
+    val type: String,
+    val latitude: String = "",
+    val longitude: String = ""
+)
+
+data class HotelDetailInfo(
+    val name: String = "",
+    val address: String = "",
+    val priceRange: String = "",
+    val feature: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
+    val phone: String = "",
+    val facilities: List<String> = emptyList(),
+    val roomTypes: String = "",
+    val rating: String = "",
+    val parking: String = "",
+    val renovationTime: String = "",
+    val checkInTime: String = "",
+    val checkOutTime: String = "",
+    val description: String = ""
+)
+
+data class AttractionDetailInfo(
+    val name: String = "",
+    val address: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
+    val score: String = "",
+    val intro: String = "",
+    val openTime: String = "",
+    val ticketPrice: String = "",
+    val suggestion: String = "",
+    val history: String = "",
+    val phone: String = "",
+    val rating: String = "",
+    val description: String = "",
+    val bestTime: String = "",
+    val duration: String = ""
+)
+
+data class RestaurantDetailInfo(
+    val name: String = "",
+    val address: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
+    val score: String = "",
+    val featureDish: String = "",
+    val openTime: String = "",
+    val avgPrice: String = "",
+    val phone: String = "",
+    val intro: String = "",
+    val rating: String = "",
+    val description: String = "",
+    val cuisineType: String = "",
+    val seats: String = ""
+)

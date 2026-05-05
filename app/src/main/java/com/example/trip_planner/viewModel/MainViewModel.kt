@@ -1,211 +1,170 @@
 package com.example.trip_planner.viewModel
 
 import android.app.Application
-import android.content.Context
 import android.util.Log
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.trip_planner.data.FavoriteManager
 import com.example.trip_planner.data.local.TripDatabase
+import com.example.trip_planner.data.local.entity.TripPlanEntity
+import com.example.trip_planner.data.repository.AuthRepository
+import com.example.trip_planner.data.repository.CachedTripRepository
 import com.example.trip_planner.data.repository.TripPlanRepository
 import com.example.trip_planner.network.TripRepository
 import com.example.trip_planner.network.model.AgentResult
 import com.example.trip_planner.network.model.DayPlan
+import com.example.trip_planner.network.model.HotelInfoDto
 import com.example.trip_planner.network.model.PlanHotel
+import com.example.trip_planner.network.model.RestaurantInfoDto
+import com.example.trip_planner.network.model.SpotInfo
 import com.example.trip_planner.network.model.WeatherResponse
-import com.example.trip_planner.ui.content.AgentType
-import com.example.trip_planner.ui.content.FavoriteItem
-import com.example.trip_planner.ui.content.PoiModel
-import com.example.trip_planner.ui.content.PoiType
-import com.google.gson.Gson
+import com.example.trip_planner.ui.screens.AgentType
+import com.example.trip_planner.ui.screens.PoiModel
+import com.example.trip_planner.ui.screens.PoiType
+import com.example.trip_planner.utils.NetworkMonitor
+import com.example.trip_planner.utils.UserPreferences
+import com.google.android.gms.maps.model.LatLng
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
-/**
- * 主 ViewModel
- * 
- * 负责管理旅行规划应用的核心业务逻辑和 UI 状态
- * 
- * 主要职责：
- * - 管理用户输入（目的地、天数、偏好）
- * - 管理 UI 状态（加载、成功、错误）
- * - 协调各 Agent 的数据获取
- * - 处理业务逻辑和异常
- * 
- * 使用方式：通过 ViewModelProvider 创建实例，Compose 界面观察状态变化
- */
+sealed class UiState<out T> {
+    object Idle : UiState<Nothing>()
+    object Loading : UiState<Nothing>()
+    data class Success<T>(val data: T) : UiState<T>()
+    data class Error(val message: String) : UiState<Nothing>()
+}
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val TAG = "MainViewModel"
-    private val gson = Gson()
 
-    /**
-     * 收藏管理器
-     * 延迟初始化，在首次使用时创建
-     */
-    private var favoriteManager: FavoriteManager? = null
-
-    /**
-     * 行程规划仓库
-     */
     private val tripPlanRepository: TripPlanRepository
+    private val authRepository = AuthRepository()
 
     init {
         val database = TripDatabase.getDatabase(application)
         tripPlanRepository = TripPlanRepository(database.tripPlanDao())
     }
 
-    /**
-     * 初始化收藏管理器
-     * 需要传入 Application Context
-     */
-    fun initFavoriteManager(context: Context) {
-        if (favoriteManager == null) {
-            favoriteManager = FavoriteManager(context)
-        }
-    }
-
-    /**
-     * 获取收藏列表
-     */
-    fun getFavorites(): List<FavoriteItem> {
-        return favoriteManager?.getAllFavorites() ?: emptyList()
-    }
-
-    /**
-     * 检查是否已收藏
-     */
-    fun isFavorite(itemId: String): Boolean {
-        return favoriteManager?.isFavorite(itemId) ?: false
-    }
-
-    /**
-     * 切换收藏状态
-     * 返回新的收藏状态（true=已收藏，false=未收藏）
-     */
-    fun toggleFavorite(item: FavoriteItem): Boolean {
-        return favoriteManager?.toggleFavorite(item) ?: false
-    }
-
-    /**
-     * 目的地输入
-     * 默认值：成都
-     */
-    var destination = mutableStateOf("成都")
-
-    /**
-     * 旅行天数输入
-     * 默认值：3天
-     */
-    var days = mutableStateOf("3")
-
-    /**
-     * 用户偏好输入
-     * 默认值：不吃辣
-     */
-    var preferences = mutableStateOf("不吃辣")
-
-    /**
-     * UI 状态
-     * 
-     * 可选值：
-     * - "Idle": 初始状态
-     * - "Loading": 加载中
-     * - "Success": 加载成功
-     * - "Error": 加载失败
-     */
-    var uiState = mutableStateOf("Idle")
-
-    /**
-     * 结果数据
-     * 用于显示错误信息或文本结果
-     */
-    var resultData = mutableStateOf("")
+    private val _destination = MutableStateFlow("成都")
+    val destination: StateFlow<String> = _destination.asStateFlow()
     
-    /**
-     * 当前选中的 Agent 类型
-     * 默认值：WEATHER（天气查询）
-     */
-    var selectedAgent = mutableStateOf(AgentType.WEATHER)
+    private val _days = MutableStateFlow("3")
+    val days: StateFlow<String> = _days.asStateFlow()
     
-    /**
-     * 天气数据列表（支持多天）
-     * fetchWeather 成功后填充
-     */
-    var weatherData = mutableStateOf<List<WeatherResponse>>(emptyList())
+    private val _startDate = MutableStateFlow("")
+    val startDate: StateFlow<String> = _startDate.asStateFlow()
+    
+    private val _endDate = MutableStateFlow("")
+    val endDate: StateFlow<String> = _endDate.asStateFlow()
+    
+    private val _preferences = MutableStateFlow("")
+    val preferences: StateFlow<String> = _preferences.asStateFlow()
 
-    /**
-     * 酒店数据列表
-     * fetchHotels 成功后填充
-     */
-    var hotelData = mutableStateOf<List<PoiModel>>(emptyList())
+    val agentUiStates = mutableStateMapOf<AgentType, String>(
+        AgentType.ALL to "Idle",
+        AgentType.WEATHER to "Idle",
+        AgentType.HOTEL to "Idle",
+        AgentType.RESTAURANT to "Idle",
+        AgentType.ATTRACTION to "Idle"
+    )
 
-    /**
-     * 餐厅数据列表
-     * fetchRestaurants 成功后填充
-     */
-    var restaurantData = mutableStateOf<List<PoiModel>>(emptyList())
+    fun getCurrentAgentUiState(): String {
+        return agentUiStates[selectedAgent.value] ?: "Idle"
+    }
 
-    /**
-     * 景点数据列表
-     * fetchAttractions 成功后填充
-     */
-    var attractionData = mutableStateOf<List<PoiModel>>(emptyList())
+    fun setAgentUiState(agentType: AgentType, state: String) {
+        agentUiStates[agentType] = state
+    }
 
-    /**
-     * 日程数据（文本内容）
-     * fetchItinerary 成功后填充
-     */
-    var itineraryData = mutableStateOf<String>("")
+    private val _resultData = MutableStateFlow("")
+    val resultData: StateFlow<String> = _resultData.asStateFlow()
+    
+    private val _selectedAgent = MutableStateFlow(AgentType.ALL)
+    val selectedAgent: StateFlow<AgentType> = _selectedAgent.asStateFlow()
+    
+    private val _weatherState = MutableStateFlow<UiState<List<WeatherResponse>>>(UiState.Idle)
+    val weatherState: StateFlow<UiState<List<WeatherResponse>>> = _weatherState.asStateFlow()
+    private val _weatherData = MutableStateFlow<List<WeatherResponse>>(emptyList())
+    val weatherData: StateFlow<List<WeatherResponse>> = _weatherData.asStateFlow()
 
-    /**
-     * 旅行总汇总
-     * ALL 模式下一键生成后填充
-     */
-    var totalSummary = mutableStateOf<String>("")
+    private val _hotelState = MutableStateFlow<UiState<List<PoiModel>>>(UiState.Idle)
+    val hotelState: StateFlow<UiState<List<PoiModel>>> = _hotelState.asStateFlow()
+    private val _hotelData = MutableStateFlow<List<PoiModel>>(emptyList())
+    val hotelData: StateFlow<List<PoiModel>> = _hotelData.asStateFlow()
+    private val _hotelInfoList = MutableStateFlow<List<HotelInfoDto>>(emptyList())
+    val hotelInfoList: StateFlow<List<HotelInfoDto>> = _hotelInfoList.asStateFlow()
 
-    /**
-     * 每日行程列表
-     * ALL 模式下一键生成后填充
-     */
-    var dayPlans = mutableStateOf<List<DayPlan>>(emptyList())
+    private val _restaurantState = MutableStateFlow<UiState<List<PoiModel>>>(UiState.Idle)
+    val restaurantState: StateFlow<UiState<List<PoiModel>>> = _restaurantState.asStateFlow()
+    private val _restaurantData = MutableStateFlow<List<PoiModel>>(emptyList())
+    val restaurantData: StateFlow<List<PoiModel>> = _restaurantData.asStateFlow()
+    private val _restaurantInfoList = MutableStateFlow<List<RestaurantInfoDto>>(emptyList())
+    val restaurantInfoList: StateFlow<List<RestaurantInfoDto>> = _restaurantInfoList.asStateFlow()
 
-    /**
-     * 行程规划酒店列表
-     * ALL 模式下一键生成后填充
-     */
-    var planHotels = mutableStateOf<List<PlanHotel>>(emptyList())
+    private val _attractionState = MutableStateFlow<UiState<List<PoiModel>>>(UiState.Idle)
+    val attractionState: StateFlow<UiState<List<PoiModel>>> = _attractionState.asStateFlow()
+    private val _attractionData = MutableStateFlow<List<PoiModel>>(emptyList())
+    val attractionData: StateFlow<List<PoiModel>> = _attractionData.asStateFlow()
+    private val _spotInfoList = MutableStateFlow<List<SpotInfo>>(emptyList())
+    val spotInfoList: StateFlow<List<SpotInfo>> = _spotInfoList.asStateFlow()
 
-    /**
-     * 整体出行建议
-     * ALL 模式下一键生成后填充
-     */
-    var overallTips = mutableStateOf<String>("")
+    private val _allInOneState = MutableStateFlow<UiState<Unit>>(UiState.Idle)
+    val allInOneState: StateFlow<UiState<Unit>> = _allInOneState.asStateFlow()
+    private val _dayPlans = MutableStateFlow<List<DayPlan>>(emptyList())
+    val dayPlans: StateFlow<List<DayPlan>> = _dayPlans.asStateFlow()
+    private val _planHotels = MutableStateFlow<List<PlanHotel>>(emptyList())
+    val planHotels: StateFlow<List<PlanHotel>> = _planHotels.asStateFlow()
+    private val _overallTips = MutableStateFlow("")
+    val overallTips: StateFlow<String> = _overallTips.asStateFlow()
 
-    /**
-     * 数据仓库实例
-     * 负责处理所有网络请求
-     */
+    private val _isPlanSaved = MutableStateFlow(false)
+    val isPlanSaved: StateFlow<Boolean> = _isPlanSaved.asStateFlow()
+    private val _currentSavedPlan = MutableStateFlow<TripPlanEntity?>(null)
+    val currentSavedPlan: StateFlow<TripPlanEntity?> = _currentSavedPlan.asStateFlow()
+
     private val repository = TripRepository()
+    private val cachedRepository by lazy { CachedTripRepository(getApplication()) }
+    private val networkMonitor by lazy { NetworkMonitor(getApplication()) }
 
-    /**
-     * 触发生成旅行规划
-     * 
-     * 根据当前选中的 Agent 类型调用对应的数据获取方法
-     * 入口函数，由 UI 层点击事件触发
-     */
+    val isNetworkAvailable: Boolean
+        get() = networkMonitor.isNetworkAvailable()
+
+    fun setDestination(value: String) { _destination.value = value }
+    fun setDays(value: String) { _days.value = value }
+    fun setStartDate(value: String) { _startDate.value = value }
+    fun setEndDate(value: String) { _endDate.value = value }
+    fun setPreferences(value: String) { _preferences.value = value }
+    fun setSelectedAgent(value: AgentType) { _selectedAgent.value = value }
+    fun setResultData(value: String) { _resultData.value = value }
+    fun setIsPlanSaved(value: Boolean) { _isPlanSaved.value = value }
+
+    private var weatherJob: Job? = null
+    private var hotelJob: Job? = null
+    private var restaurantJob: Job? = null
+    private var attractionJob: Job? = null
+    private var allInOneJob: Job? = null
+
     fun generateTripPlan() {
-        if (destination.value.isBlank()) {
+        if (_destination.value.isBlank()) {
             Log.w(TAG, "⚠️ 用户未输入目的地就点击了生成")
-            resultData.value = "请先输入目的地！"
+            setResultData("请先输入目的地！")
             return
         }
 
-        val agentType = selectedAgent.value
+        setIsPlanSaved(false)
+
+        val agentType = _selectedAgent.value
         Log.i(TAG, "🎯 触发 [$agentType] Agent 请求")
         
-        uiState.value = "Loading"
-        resultData.value = ""
+        setAgentUiState(agentType, "Loading")
+        setResultData("")
 
         when (agentType) {
             AgentType.WEATHER -> fetchWeather()
@@ -213,40 +172,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             AgentType.RESTAURANT -> fetchRestaurants()
             AgentType.ATTRACTION -> fetchAttractions()
             AgentType.ALL -> fetchAllInOne()
-            else -> {}
         }
     }
 
-    /**
-     * 一键生成完整旅行规划
-     * 
-     * 使用统一 API 一次请求获取所有数据
-     * 包含天气、景点、酒店、餐厅和行程汇总
-     */
+    fun cancelCurrentRequest() {
+        weatherJob?.cancel()
+        hotelJob?.cancel()
+        restaurantJob?.cancel()
+        attractionJob?.cancel()
+        allInOneJob?.cancel()
+        Log.i(TAG, "🛑 已取消当前请求")
+    }
+
     private fun fetchAllInOne() {
-        viewModelScope.launch {
-            uiState.value = "Loading"
-            val result = repository.fetchAllInOne(destination.value, days.value, preferences.value)
+        allInOneJob?.cancel()
+        allInOneJob = viewModelScope.launch {
+            _allInOneState.value = UiState.Loading
+            setAgentUiState(AgentType.ALL, "Loading")
+            val result = cachedRepository.fetchAllInOne(
+                destination = _destination.value,
+                days = _days.value,
+                startDate = _startDate.value,
+                endDate = _endDate.value,
+                preferences = _preferences.value
+            )
             when (result) {
                 is AgentResult.Success -> {
                     val planData = result.data
                     
-                    // 设置每日行程
-                    dayPlans.value = planData.days
+                    _dayPlans.value = planData.days
                     Log.i(TAG, "✅ 每日行程解析: ${planData.days.size} 天")
                     
-                    // 设置酒店列表
-                    planHotels.value = planData.hotel
+                    _planHotels.value = planData.hotel
                     Log.i(TAG, "✅ 酒店解析: ${planData.hotel.size} 家")
                     
-                    // 设置整体出行建议
-                    overallTips.value = planData.overallTips
+                    _overallTips.value = planData.overallTips
                     Log.i(TAG, "✅ 整体建议: ${planData.overallTips}")
                     
-                    // 构建天气数据（从每日行程中提取）
                     val weatherList = planData.days.map { day ->
                         WeatherResponse(
-                            cityName = destination.value,
+                            cityName = _destination.value,
                             latitude = "",
                             longitude = "",
                             date = day.date,
@@ -255,16 +220,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             tips = day.tips
                         )
                     }
-                    weatherData.value = weatherList
+                    _weatherData.value = weatherList
+                    _weatherState.value = UiState.Success(weatherList)
                     
-                    // 将酒店转换为 PoiModel
                     val hotelPois = planData.hotel.map { hotel ->
                         PoiModel(
                             name = hotel.name,
                             rating = "",
                             price = hotel.price,
                             distance = "",
-                            latLng = com.amap.api.maps.model.LatLng(
+                            latLng = LatLng(
                                 hotel.latitude.toDoubleOrNull() ?: 0.0,
                                 hotel.longitude.toDoubleOrNull() ?: 0.0
                             ),
@@ -274,9 +239,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             poiType = PoiType.HOTEL
                         )
                     }
-                    hotelData.value = hotelPois
+                    _hotelData.value = hotelPois
+                    _hotelState.value = UiState.Success(hotelPois)
                     
-                    // 从每日行程中提取餐厅（餐饮）
                     val restaurantPois = mutableListOf<PoiModel>()
                     planData.days.forEach { day ->
                         day.meals?.let { meals ->
@@ -287,7 +252,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         rating = "",
                                         price = lunch.dish,
                                         distance = "",
-                                        latLng = com.amap.api.maps.model.LatLng(0.0, 0.0),
+                                        latLng = LatLng(0.0, 0.0),
                                         desc = lunch.address,
                                         priceRange = "",
                                         featureDish = lunch.dish,
@@ -302,7 +267,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         rating = "",
                                         price = dinner.dish,
                                         distance = "",
-                                        latLng = com.amap.api.maps.model.LatLng(0.0, 0.0),
+                                        latLng = LatLng(0.0, 0.0),
                                         desc = dinner.address,
                                         priceRange = "",
                                         featureDish = dinner.dish,
@@ -312,10 +277,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     }
-                    restaurantData.value = restaurantPois
+                    _restaurantData.value = restaurantPois
+                    _restaurantState.value = UiState.Success(restaurantPois)
                     Log.i(TAG, "✅ 餐厅解析: ${restaurantPois.size} 家")
                     
-                    // 从每日行程中提取景点
                     val attractionPois = mutableListOf<PoiModel>()
                     planData.days.forEach { day ->
                         day.itinerary.forEach { item ->
@@ -325,7 +290,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     rating = "",
                                     price = "",
                                     distance = "",
-                                    latLng = com.amap.api.maps.model.LatLng(
+                                    latLng = LatLng(
                                         item.latitude.toDoubleOrNull() ?: 0.0,
                                         item.longitude.toDoubleOrNull() ?: 0.0
                                     ),
@@ -337,15 +302,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         }
                     }
-                    attractionData.value = attractionPois
+                    _attractionData.value = attractionPois
+                    _attractionState.value = UiState.Success(attractionPois)
                     Log.i(TAG, "✅ 景点解析: ${attractionPois.size} 个")
                     
-                    uiState.value = "Success"
+                    setIsPlanSaved(false)
+                    setAgentUiState(AgentType.ALL, "Success")
+                    _allInOneState.value = UiState.Success(Unit)
                     Log.i(TAG, "✅ 一键生成完成")
                 }
                 is AgentResult.Error -> {
-                    uiState.value = "Error"
-                    resultData.value = result.message
+                    setAgentUiState(AgentType.ALL, "Error")
+                    setResultData(result.message)
+                    _allInOneState.value = UiState.Error(result.message)
                     Log.e(TAG, "❌ 一键生成失败: ${result.message}")
                 }
 
@@ -356,26 +325,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * 获取天气数据
-     * 
-     * 调用 repository 获取天气信息
-     * 成功：更新 weatherData 状态
-     * 失败：更新 resultData 显示错误信息
-     */
     private fun fetchWeather() {
-        viewModelScope.launch {
-            uiState.value = "Loading"
-            val result = repository.fetchWeather(destination.value, days.value, preferences.value)
+        weatherJob?.cancel()
+        weatherJob = viewModelScope.launch {
+            _weatherState.value = UiState.Loading
+            setAgentUiState(AgentType.WEATHER, "Loading")
+            val result = cachedRepository.fetchWeather(
+                destination = _destination.value,
+                days = _days.value,
+                startDate = _startDate.value,
+                endDate = _endDate.value,
+                preferences = _preferences.value
+            )
             when (result) {
                 is AgentResult.Success -> {
-                    weatherData.value = result.data
-                    uiState.value = "Success"
+                    _weatherData.value = result.data
+                    _weatherState.value = UiState.Success(result.data)
+                    setAgentUiState(AgentType.WEATHER, "Success")
                     Log.i(TAG, "✅ 天气数据获取成功: ${result.data.size} 天")
                 }
                 is AgentResult.Error -> {
-                    uiState.value = "Error"
-                    resultData.value = result.message
+                    _weatherState.value = UiState.Error(result.message)
+                    setAgentUiState(AgentType.WEATHER, "Error")
+                    setResultData(result.message)
                     Log.e(TAG, "❌ 天气数据获取失败: ${result.message}")
                 }
                 is AgentResult.Loading -> {
@@ -386,26 +358,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    /**
-     * 获取酒店数据
-     * 
-     * 调用 repository 获取酒店推荐
-     * 成功：更新 hotelData 状态
-     * 失败：更新 resultData 显示错误信息
-     */
     private fun fetchHotels() {
-        viewModelScope.launch {
-            uiState.value = "Loading"
-            val result = repository.fetchHotels(destination.value, days.value, preferences.value)
+        hotelJob?.cancel()
+        hotelJob = viewModelScope.launch {
+            _hotelState.value = UiState.Loading
+            setAgentUiState(AgentType.HOTEL, "Loading")
+            val result = cachedRepository.fetchHotels(
+                destination = _destination.value,
+                days = _days.value,
+                startDate = _startDate.value,
+                endDate = _endDate.value,
+                preferences = _preferences.value
+            )
             when (result) {
                 is AgentResult.Success -> {
-                    hotelData.value = result.data
-                    uiState.value = "Success"
-                    Log.i(TAG, "✅ 酒店数据获取成功: ${result.data.size} 家酒店")
+                    val hotelData = result.data
+                    _hotelInfoList.value = hotelData.hotelInfoList
+                    _hotelData.value = hotelData.poiList
+                    _hotelState.value = UiState.Success(hotelData.poiList)
+                    setAgentUiState(AgentType.HOTEL, "Success")
+                    Log.i(TAG, "✅ 酒店数据获取成功: ${hotelData.poiList.size} 家酒店")
                 }
                 is AgentResult.Error -> {
-                    uiState.value = "Error"
-                    resultData.value = result.message
+                    _hotelState.value = UiState.Error(result.message)
+                    setAgentUiState(AgentType.HOTEL, "Error")
+                    setResultData(result.message)
                     Log.e(TAG, "❌ 酒店数据获取失败: ${result.message}")
                 }
                 is AgentResult.Loading -> {
@@ -415,26 +392,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * 获取餐厅数据
-     * 
-     * 调用 repository 获取餐厅推荐
-     * 成功：更新 restaurantData 状态
-     * 失败：更新 resultData 显示错误信息
-     */
     private fun fetchRestaurants() {
-        viewModelScope.launch {
-            uiState.value = "Loading"
-            val result = repository.fetchRestaurants(destination.value, days.value, preferences.value)
+        restaurantJob?.cancel()
+        restaurantJob = viewModelScope.launch {
+            _restaurantState.value = UiState.Loading
+            setAgentUiState(AgentType.RESTAURANT, "Loading")
+            val result = cachedRepository.fetchRestaurants(
+                destination = _destination.value,
+                days = _days.value,
+                startDate = _startDate.value,
+                endDate = _endDate.value,
+                preferences = _preferences.value
+            )
             when (result) {
                 is AgentResult.Success -> {
-                    restaurantData.value = result.data
-                    uiState.value = "Success"
-                    Log.i(TAG, "✅ 餐厅数据获取成功: ${result.data.size} 家餐厅")
+                    val restaurantData = result.data
+                    _restaurantInfoList.value = restaurantData.restaurantInfoList
+                    _restaurantData.value = restaurantData.poiList
+                    _restaurantState.value = UiState.Success(restaurantData.poiList)
+                    setAgentUiState(AgentType.RESTAURANT, "Success")
+                    Log.i(TAG, "✅ 餐厅数据获取成功: ${restaurantData.poiList.size} 家餐厅")
                 }
                 is AgentResult.Error -> {
-                    uiState.value = "Error"
-                    resultData.value = result.message
+                    _restaurantState.value = UiState.Error(result.message)
+                    setAgentUiState(AgentType.RESTAURANT, "Error")
+                    setResultData(result.message)
                     Log.e(TAG, "❌ 餐厅数据获取失败: ${result.message}")
                 }
                 is AgentResult.Loading -> {
@@ -444,26 +426,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * 获取景点数据
-     * 
-     * 调用 repository 获取景点推荐
-     * 成功：更新 attractionData 状态
-     * 失败：更新 resultData 显示错误信息
-     */
     private fun fetchAttractions() {
-        viewModelScope.launch {
-            uiState.value = "Loading"
-            val result = repository.fetchAttractions(destination.value, days.value, preferences.value)
+        attractionJob?.cancel()
+        attractionJob = viewModelScope.launch {
+            _attractionState.value = UiState.Loading
+            setAgentUiState(AgentType.ATTRACTION, "Loading")
+            val result = cachedRepository.fetchAttractions(
+                destination = _destination.value,
+                days = _days.value,
+                startDate = _startDate.value,
+                endDate = _endDate.value,
+                preferences = _preferences.value
+            )
             when (result) {
                 is AgentResult.Success -> {
-                    attractionData.value = result.data
-                    uiState.value = "Success"
-                    Log.i(TAG, "✅ 景点数据获取成功: ${result.data.size} 个景点")
+                    val attractionData = result.data
+                    _spotInfoList.value = attractionData.spotInfoList
+                    _attractionData.value = attractionData.poiList
+                    _attractionState.value = UiState.Success(attractionData.poiList)
+                    setAgentUiState(AgentType.ATTRACTION, "Success")
+                    Log.i(TAG, "✅ 景点数据获取成功: ${attractionData.poiList.size} 个景点")
                 }
                 is AgentResult.Error -> {
-                    uiState.value = "Error"
-                    resultData.value = result.message
+                    _attractionState.value = UiState.Error(result.message)
+                    setAgentUiState(AgentType.ATTRACTION, "Error")
+                    setResultData(result.message)
                     Log.e(TAG, "❌ 景点数据获取失败: ${result.message}")
                 }
                 is AgentResult.Loading -> {
@@ -474,65 +461,244 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 切换 Agent 类型
-     * 
-     * @param agentType 目标 Agent 类型
+     * 手动保存行程到历史记录
+     * 由用户点击保存按钮触发
+     * @return 保存是否成功
      */
-    fun selectAgent(agentType: AgentType) {
-        selectedAgent.value = agentType
-        Log.i(TAG, "🔄 切换 Agent: $agentType")
-    }
-
-    /**
-     * 重置为输入状态
-     * 
-     * 清空所有数据，恢复初始状态
-     * 用于返回输入界面时调用
-     */
-    fun resetToInput() {
-        Log.i(TAG, "🔙 重置为输入状态")
-        uiState.value = "Idle"
-        resultData.value = ""
-        weatherData.value = emptyList()
-        hotelData.value = emptyList()
-        restaurantData.value = emptyList()
-        attractionData.value = emptyList()
-        itineraryData.value = ""
-        totalSummary.value = ""
-        dayPlans.value = emptyList()
-        planHotels.value = emptyList()
-        overallTips.value = ""
-    }
-
-    /**
-     * 手动保存当前行程规划到收藏
-     * 由 UI 层用户点击触发
-     */
-    fun saveCurrentTripPlan() {
-        if (dayPlans.value.isEmpty() && planHotels.value.isEmpty()) {
-            Log.w(TAG, "⚠️ 没有可保存的行程规划")
-            return
+    fun savePlanToHistory(): Boolean {
+        if (_dayPlans.value.isEmpty() && _planHotels.value.isEmpty()) {
+            Log.w(TAG, "⚠️ 无行程数据，无法保存")
+            return false
         }
         
         viewModelScope.launch {
             try {
-                val hotelJson = gson.toJson(planHotels.value)
-                val dayPlansJson = gson.toJson(dayPlans.value)
+                val dayPlansJson = Json.encodeToString(_dayPlans.value)
+                val hotelJson = Json.encodeToString(_planHotels.value)
                 
-                val tripPlan = com.example.trip_planner.data.local.entity.TripPlanEntity(
-                    destination = destination.value,
-                    days = days.value.toIntOrNull() ?: 3,
-                    preferences = preferences.value,
+                val plan = TripPlanEntity(
+                    destination = _destination.value,
+                    days = _days.value.toIntOrNull() ?: 1,
+                    preferences = _preferences.value,
                     hotelJson = hotelJson,
                     dayPlansJson = dayPlansJson,
-                    overallTips = overallTips.value
+                    overallTips = _overallTips.value
+                )
+                tripPlanRepository.saveTripPlan(plan)
+                setIsPlanSaved(true)
+                _currentSavedPlan.value = plan
+                
+                val tripId = "trip_${System.currentTimeMillis()}"
+                val tripData = Json.encodeToString(
+                    TripPlanSyncData(
+                        destination = _destination.value,
+                        days = _days.value,
+                        startDate = _startDate.value,
+                        endDate = _endDate.value,
+                        preferences = _preferences.value,
+                        dayPlansJson = dayPlansJson,
+                        hotelJson = hotelJson,
+                        overallTips = _overallTips.value
+                    )
+                )
+                saveTripToCloud(
+                    tripId = tripId,
+                    destination = _destination.value,
+                    days = _days.value.toIntOrNull() ?: 1,
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    preferences = _preferences.value,
+                    tripData = tripData
                 )
                 
-                tripPlanRepository.saveTripPlan(tripPlan)
-                Log.i(TAG, "✅ 行程规划已收藏: ${destination.value} - ${days.value}天")
+                Log.i(TAG, "✅ 已保存到历史记录，包含 ${_dayPlans.value.size} 天行程和 ${_planHotels.value.size} 家酒店")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ 收藏行程规划失败: ${e.message}")
+                Log.e(TAG, "❌ 保存历史记录失败: ${e.message}")
+            }
+        }
+        return true
+    }
+
+    fun saveTripToCloud(
+        tripId: String,
+        destination: String,
+        days: Int,
+        startDate: String,
+        endDate: String,
+        preferences: String,
+        tripData: String
+    ) {
+        viewModelScope.launch {
+            try {
+                val token = UserPreferences.getToken(getApplication())
+                if (token.isNotEmpty()) {
+                    authRepository.saveTripToCloud(
+                        token = token,
+                        tripId = tripId,
+                        destination = destination,
+                        days = days,
+                        startDate = startDate,
+                        endDate = endDate,
+                        preferences = preferences,
+                        tripData = tripData
+                    )
+                    Log.i(TAG, "✅ 行程已同步到云端")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ 云端同步失败: ${e.message}")
             }
         }
     }
+
+    /**
+     * 重置保存状态
+     * 当用户重新规划行程时调用
+     */
+    fun resetSaveState() {
+        setIsPlanSaved(false)
+        _currentSavedPlan.value = null
+    }
+
+    /**
+     * 删除指定天的指定景点
+     * @param dayIndex 天的索引（从0开始）
+     * @param itemIndex 景点的索引（从0开始）
+     */
+    fun removeItineraryItem(dayIndex: Int, itemIndex: Int) {
+        val updatedPlans = dayPlans.value.toMutableList()
+        if (dayIndex in updatedPlans.indices) {
+            val day = updatedPlans[dayIndex]
+            val updatedItinerary = day.itinerary.toMutableList()
+            if (itemIndex in updatedItinerary.indices) {
+                updatedItinerary.removeAt(itemIndex)
+                updatedPlans[dayIndex] = day.copy(itinerary = updatedItinerary)
+                dayPlans.value = updatedPlans
+                Log.i(TAG, "✅ 已删除第${dayIndex + 1}天第${itemIndex + 1}个景点")
+            }
+        }
+    }
+
+    /**
+     * 删除指定天的午餐
+     * @param dayIndex 天的索引（从0开始）
+     */
+    fun removeLunch(dayIndex: Int) {
+        val updatedPlans = dayPlans.value.toMutableList()
+        if (dayIndex in updatedPlans.indices) {
+            val day = updatedPlans[dayIndex]
+            val updatedMeals = day.meals?.copy(lunch = null)
+            updatedPlans[dayIndex] = day.copy(meals = updatedMeals)
+            dayPlans.value = updatedPlans
+            Log.i(TAG, "✅ 已删除第${dayIndex + 1}天午餐")
+        }
+    }
+
+    /**
+     * 删除指定天的晚餐
+     * @param dayIndex 天的索引（从0开始）
+     */
+    fun removeDinner(dayIndex: Int) {
+        val updatedPlans = dayPlans.value.toMutableList()
+        if (dayIndex in updatedPlans.indices) {
+            val day = updatedPlans[dayIndex]
+            val updatedMeals = day.meals?.copy(dinner = null)
+            updatedPlans[dayIndex] = day.copy(meals = updatedMeals)
+            dayPlans.value = updatedPlans
+            Log.i(TAG, "✅ 已删除第${dayIndex + 1}天晚餐")
+        }
+    }
+
+    /**
+     * 移动景点位置
+     * @param dayIndex 天的索引（从0开始）
+     * @param fromIndex 原位置
+     * @param toIndex 目标位置
+     */
+    fun moveItineraryItem(dayIndex: Int, fromIndex: Int, toIndex: Int) {
+        val updatedPlans = dayPlans.value.toMutableList()
+        if (dayIndex in updatedPlans.indices) {
+            val day = updatedPlans[dayIndex]
+            val updatedItinerary = day.itinerary.toMutableList()
+            if (fromIndex in updatedItinerary.indices && toIndex in updatedItinerary.indices) {
+                val item = updatedItinerary.removeAt(fromIndex)
+                updatedItinerary.add(toIndex, item)
+                updatedPlans[dayIndex] = day.copy(itinerary = updatedItinerary)
+                dayPlans.value = updatedPlans
+                Log.i(TAG, "✅ 已移动第${dayIndex + 1}天景点: $fromIndex -> $toIndex")
+            }
+        }
+    }
+
+    /**
+     * 更新行程计划（用于编辑器保存）
+     */
+    fun updatePlans(updatedDays: List<DayPlan>, updatedHotels: List<PlanHotel>, updatedTips: String) {
+        dayPlans.value = updatedDays
+        planHotels.value = updatedHotels
+        overallTips.value = updatedTips
+        Log.i(TAG, "✅ 已更新行程计划: ${updatedDays.size}天, ${updatedHotels.size}家酒店")
+    }
+
+    /**
+     * 从历史记录加载行程规划
+     */
+    fun loadTripPlanFromHistory(planId: Long) {
+        viewModelScope.launch {
+            try {
+                val plan = tripPlanRepository.getTripPlanById(planId)
+                if (plan != null) {
+                    destination.value = plan.destination
+                    days.value = plan.days.toString()
+                    preferences.value = plan.preferences
+                    overallTips.value = plan.overallTips
+                    
+                    if (plan.dayPlansJson.isNotEmpty()) {
+                        dayPlans.value = Json.decodeFromString(plan.dayPlansJson)
+                        Log.i(TAG, "✅ 加载历史记录: ${dayPlans.value.size} 天行程")
+                    }
+                    
+                    if (plan.hotelJson.isNotEmpty()) {
+                        planHotels.value = Json.decodeFromString(plan.hotelJson)
+                        Log.i(TAG, "✅ 加载历史记录: ${planHotels.value.size} 家酒店")
+                    }
+                    
+                    setAgentUiState(AgentType.ALL, "Success")
+                    selectedAgent.value = AgentType.ALL
+                } else {
+                    Log.e(TAG, "❌ 未找到历史记录: $planId")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ 加载历史记录失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 清除所有缓存
+     */
+    fun clearCache() {
+        viewModelScope.launch {
+            cachedRepository.clearAllCache()
+            Log.i(TAG, "✅ 已清除所有缓存")
+        }
+    }
+
+    /**
+     * 获取缓存统计信息
+     */
+    suspend fun getCacheStats(): String {
+        return cachedRepository.getCacheStats()
+    }
 }
+
+@Serializable
+data class TripPlanSyncData(
+    val destination: String,
+    val days: String,
+    val startDate: String,
+    val endDate: String,
+    val preferences: String,
+    val dayPlansJson: String,
+    val hotelJson: String,
+    val overallTips: String
+)

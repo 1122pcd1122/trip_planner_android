@@ -25,14 +25,19 @@ object NetworkClient {
     /** API 基础URL - 指向本地模拟器的后端服务器 */
     private const val BASE_URL = "http://10.0.2.2:8000"
 
+    /** 网络超时时间（秒）- 后端响应较慢，设置为 300 秒 */
+    private const val TIMEOUT_SECONDS = 300L
+
     /**
      * HTTP 日志拦截器
      * 
      * 用于打印网络请求/响应的详细信息，方便调试
      * Level.BODY 会打印完整的请求头、响应头和请求体
      */
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+    private val loggingInterceptor by lazy {
+        HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
     }
 
     /**
@@ -44,12 +49,14 @@ object NetworkClient {
      * - writeTimeout: 30秒，发送请求的最大等待时间
      * - addInterceptor: 添加日志拦截器用于调试
      */
-    private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(300, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
-        .writeTimeout(300, TimeUnit.SECONDS)
-        .addInterceptor(loggingInterceptor)
-        .build()
+    private val okHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .addInterceptor(loggingInterceptor)
+            .build()
+    }
 
     /**
      * Retrofit 实例配置
@@ -58,11 +65,13 @@ object NetworkClient {
      * - client: 使用配置好的 OkHttpClient
      * - addConverterFactory: 使用 Gson 进行 JSON 序列化/反序列化
      */
-    private val retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(GsonConverterFactory.create(Gson()))
-        .build()
+    private val retrofit by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(Gson()))
+            .build()
+    }
 
     /**
      * TripApiService 实例
@@ -70,5 +79,7 @@ object NetworkClient {
      * 通过 Retrofit 创建 API 服务接口的实现类
      * 供 Repository 层调用具体的 API 方法
      */
-    val tripApiService: TripApiService = retrofit.create(TripApiService::class.java)
+    val tripApiService: TripApiService by lazy { retrofit.create(TripApiService::class.java) }
+
+    val authApiService: AuthApiService by lazy { retrofit.create(AuthApiService::class.java) }
 }

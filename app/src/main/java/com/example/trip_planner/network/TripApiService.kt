@@ -1,6 +1,8 @@
 package com.example.trip_planner.network
 
+import com.example.trip_planner.network.model.AgentResult
 import com.example.trip_planner.network.model.ApiResponse
+import com.example.trip_planner.network.model.DetailRequest
 import com.example.trip_planner.network.model.TripPlanRequest
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -67,4 +69,31 @@ interface TripApiService {
      */
     @POST("/api/plan")
     suspend fun generateAllInOne(@Body request: TripPlanRequest): ApiResponse
+
+    /**
+     * 获取酒店详情
+     * 
+     * @param request 包含酒店名称、经纬度的请求体
+     * @return ApiResponse 服务器响应，包含酒店详细信息 JSON
+     */
+    @POST("/api/hotel/detail")
+    suspend fun getHotelDetail(@Body request: DetailRequest): ApiResponse
+
+    /**
+     * 获取景点详情
+     * 
+     * @param request 包含景点名称、经纬度的请求体
+     * @return ApiResponse 服务器响应，包含景点详细信息 JSON
+     */
+    @POST("/api/attraction/detail")
+    suspend fun getAttractionDetail(@Body request: DetailRequest): ApiResponse
+
+    /**
+     * 获取餐厅详情
+     * 
+     * @param request 包含餐厅名称、经纬度的请求体
+     * @return ApiResponse 服务器响应，包含餐厅详细信息 JSON
+     */
+    @POST("/api/restaurant/detail")
+    suspend fun getRestaurantDetail(@Body request: DetailRequest): ApiResponse
 }

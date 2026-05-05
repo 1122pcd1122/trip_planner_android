@@ -23,6 +23,12 @@ interface TripPlanDao {
     fun getAllTripPlans(): Flow<List<TripPlanEntity>>
 
     /**
+     * 获取指定用户的行程规划（按时间倒序）
+     */
+    @Query("SELECT * FROM trip_plans WHERE userId = :userId ORDER BY timestamp DESC")
+    fun getTripPlansByUserId(userId: Long): Flow<List<TripPlanEntity>>
+
+    /**
      * 获取单个行程规划
      */
     @Query("SELECT * FROM trip_plans WHERE id = :id")
@@ -57,4 +63,16 @@ interface TripPlanDao {
      */
     @Query("SELECT COUNT(*) FROM trip_plans")
     suspend fun getTripPlanCount(): Int
+
+    /**
+     * 获取所有行程规划（同步，用于备份）
+     */
+    @Query("SELECT * FROM trip_plans ORDER BY timestamp DESC")
+    suspend fun getAllTripPlansSync(): List<TripPlanEntity>
+
+    /**
+     * 批量插入行程规划
+     */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTripPlans(tripPlans: List<TripPlanEntity>)
 }

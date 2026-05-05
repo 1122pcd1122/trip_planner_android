@@ -1,15 +1,24 @@
 package com.example.trip_planner.ui.screens
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,156 +27,222 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.trip_planner.data.local.entity.FavoriteEntity
-import com.example.trip_planner.data.local.entity.TripPlanEntity
-import com.example.trip_planner.ui.content.BrandTeal
-import com.example.trip_planner.ui.content.CardBackground
-import com.example.trip_planner.ui.content.SoftBackground
-import com.example.trip_planner.ui.content.TextSecondary
+import com.example.trip_planner.data.local.entity.FavoriteType
+import com.example.trip_planner.utils.SearchUtils
 import com.example.trip_planner.viewModel.FavoriteViewModel
-import com.example.trip_planner.viewModel.TripPlanViewModel
+import com.example.trip_planner.ui.screens.DetailType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 /**
- * 收藏类型枚举
+ * 收藏筛选类型枚举
  */
-enum class FavoriteType(val title: String, val icon: String) {
-    ALL("全部", "🎯"),
-    PLANS("行程", "📋"),
-    HOTEL("酒店", "🏨"),
-    ATTRACTION("景点", "🏛️"),
-    RESTAURANT("餐厅", "🍽️")
+enum class FilterType(val displayName: String, val favoriteType: FavoriteType?) {
+    ALL("全部", null),
+    TRIP_PLAN("行程规划", FavoriteType.TRIP_PLAN),
+    HOTEL("酒店", FavoriteType.HOTEL),
+    ATTRACTION("景点", FavoriteType.ATTRACTION),
+    RESTAURANT("餐厅", FavoriteType.RESTAURANT)
 }
 
 /**
- * 收藏页面
+ * 收藏页面（极简现代风）
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FavoriteScreen(
     modifier: Modifier = Modifier,
     favoriteViewModel: FavoriteViewModel = viewModel(),
-    tripPlanViewModel: TripPlanViewModel = viewModel()
+    onNavigateToDetail: (DetailType) -> Unit = {}
 ) {
     val allFavorites by favoriteViewModel.allFavorites.collectAsState()
-    val filteredFavorites by favoriteViewModel.filteredFavorites.collectAsState()
-    val selectedType by favoriteViewModel.selectedType.collectAsState()
-    val allTripPlans by tripPlanViewModel.allTripPlans.collectAsState()
+    var selectedFilter by remember { mutableStateOf(FilterType.ALL) }
+    var searchQuery by remember { mutableStateOf("") }
+    val appColors = com.example.trip_planner.ui.theme.LocalAppColors.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedItems = remember { mutableStateListOf<String>() }
+
+    val filteredFavorites by remember {
+        derivedStateOf {
+            var filtered = when (selectedFilter) {
+                FilterType.ALL -> allFavorites
+                else -> allFavorites.filter { it.type == selectedFilter.favoriteType?.name }
+            }
+            
+            if (searchQuery.isNotBlank()) {
+                filtered = SearchUtils.filterAndSort(
+                    items = filtered,
+                    query = searchQuery,
+                    getText = { "${it.name} ${it.address} ${it.description}" }
+                )
+            }
+            
+            filtered
+        }
+    }
+
+    val filterCounts by remember {
+        derivedStateOf {
+            FilterType.entries.associateWith { filter ->
+                when (filter) {
+                    FilterType.ALL -> allFavorites.size
+                    else -> allFavorites.count { it.type == filter.favoriteType?.name }
+                }
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("❤️", fontSize = 24.sp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("我的收藏", fontWeight = FontWeight.Bold)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = BrandTeal,
-                    titleContentColor = Color.White
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = { Text("已选择 ${selectedItems.size} 项", fontSize = 16.sp) },
+                    actions = {
+                        TextButton(onClick = {
+                            scope.launch {
+                                val count = selectedItems.size
+                                selectedItems.forEach { favoriteViewModel.removeFavorite(it) }
+                                selectedItems.clear()
+                                isSelectionMode = false
+                                snackbarHostState.showSnackbar("已删除 $count 个收藏")
+                            }
+                        }) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = appColors.error)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("删除", color = appColors.error)
+                        }
+                        TextButton(onClick = {
+                            selectedItems.clear()
+                            isSelectionMode = false
+                        }) {
+                            Text("取消", color = appColors.brandTeal)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = appColors.cardBackground)
                 )
-            )
+            }
         }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(SoftBackground)
+                .background(appColors.softBackground)
         ) {
-            // 分类筛选
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                placeholder = { Text("搜索收藏", color = appColors.textSecondary, fontSize = 13.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = appColors.textSecondary, modifier = Modifier.size(18.dp)) },
+                singleLine = true,
+                shape = MaterialTheme.shapes.small,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = appColors.divider,
+                    unfocusedBorderColor = appColors.divider.copy(alpha = 0.5f),
+                    focusedContainerColor = appColors.cardBackground,
+                    unfocusedContainerColor = appColors.cardBackground
+                )
+            )
+
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(FavoriteType.values().toList()) { type ->
-                    val count = when (type) {
-                        FavoriteType.ALL -> allFavorites.size + allTripPlans.size
-                        FavoriteType.PLANS -> allTripPlans.size
-                        else -> favoriteViewModel.getTypeCount(type.name)
-                    }
+                items(FilterType.entries) { filter ->
+                    val count = filterCounts[filter] ?: 0
                     FilterChip(
-                        selected = selectedType == type.name || (type == FavoriteType.ALL && selectedType == null),
-                        onClick = {
-                            favoriteViewModel.selectType(if (type == FavoriteType.ALL) null else type.name)
-                        },
+                        selected = selectedFilter == filter,
+                        onClick = { selectedFilter = filter },
                         label = {
-                            Text("${type.icon} ${type.title} ($count)")
+                            Text("${filter.displayName} ($count)", fontSize = 13.sp)
                         },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = BrandTeal,
+                            selectedContainerColor = appColors.brandTeal,
                             selectedLabelColor = Color.White
                         )
                     )
                 }
             }
 
-            // 内容列表
-            when (selectedType) {
-                "PLANS" -> {
-                    // 行程规划列表
-                    if (allTripPlans.isEmpty()) {
-                        EmptyTripPlanState()
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(allTripPlans, key = { it.id }) { plan ->
-                                TripPlanCard(
-                                    tripPlan = plan,
-                                    onDelete = { tripPlanViewModel.deleteTripPlan(plan.id) }
-                                )
-                            }
-                        }
-                    }
-                }
-                null, "ALL" -> {
-                    // 全部内容
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (allTripPlans.isNotEmpty()) {
-                            item {
-                                Text("📋 行程规划", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(vertical = 8.dp))
-                            }
-                            items(allTripPlans, key = { it.id }) { plan ->
-                                TripPlanCard(tripPlan = plan, onDelete = { tripPlanViewModel.deleteTripPlan(plan.id) })
-                            }
-                        }
-                        if (filteredFavorites.isNotEmpty()) {
-                            item {
-                                Text("❤️ 单项收藏", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(vertical = 8.dp))
-                            }
-                            items(filteredFavorites, key = { it.id }) { favorite ->
-                                FavoriteItemCard(favorite = favorite, onDelete = { favoriteViewModel.removeFavorite(favorite.itemId) })
-                            }
-                        }
-                        if (allTripPlans.isEmpty() && filteredFavorites.isEmpty()) {
-                            item { EmptyFavoriteState() }
-                        }
-                    }
-                }
-                else -> {
-                    // 单项收藏
-                    if (filteredFavorites.isEmpty()) {
-                        EmptyFavoriteState()
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(filteredFavorites, key = { it.id }) { favorite ->
-                                FavoriteItemCard(favorite = favorite, onDelete = { favoriteViewModel.removeFavorite(favorite.itemId) })
-                            }
-                        }
+            if (filteredFavorites.isEmpty()) {
+                EmptyFavoriteState(appColors = appColors)
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .animateContentSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    items(filteredFavorites, key = { it.id }) { favorite ->
+                        SwipeableFavoriteCard(
+                            favorite = favorite,
+                            isSelected = isSelectionMode && selectedItems.contains(favorite.itemId),
+                            onDelete = { favoriteViewModel.removeFavorite(favorite.itemId) },
+                            onLongClick = {
+                                isSelectionMode = true
+                                selectedItems.add(favorite.itemId)
+                            },
+                            onClick = {
+                                if (isSelectionMode) {
+                                    if (selectedItems.contains(favorite.itemId)) {
+                                        selectedItems.remove(favorite.itemId)
+                                    } else {
+                                        selectedItems.add(favorite.itemId)
+                                    }
+                                } else {
+                                    when (favorite.type) {
+                                        FavoriteType.HOTEL.name -> {
+                                            onNavigateToDetail(DetailType.HotelDetail(
+                                                com.example.trip_planner.network.model.PlanHotel(
+                                                    name = favorite.name,
+                                                    address = favorite.address,
+                                                    price = favorite.price,
+                                                    advantage = favorite.description,
+                                                    latitude = "",
+                                                    longitude = ""
+                                                )
+                                            ))
+                                        }
+                                        FavoriteType.RESTAURANT.name -> {
+                                            onNavigateToDetail(DetailType.RestaurantDetail(
+                                                com.example.trip_planner.network.model.RestaurantInfoDto(
+                                                    name = favorite.name,
+                                                    latitude = "",
+                                                    longitude = "",
+                                                    address = favorite.address,
+                                                    featureDish = "",
+                                                    score = favorite.rating
+                                                )
+                                            ))
+                                        }
+                                        FavoriteType.ATTRACTION.name -> {
+                                            onNavigateToDetail(DetailType.AttractionDetail(
+                                                com.example.trip_planner.network.model.SpotInfo(
+                                                    name = favorite.name,
+                                                    latitude = "",
+                                                    longitude = "",
+                                                    address = favorite.address,
+                                                    score = favorite.rating,
+                                                    intro = favorite.description
+                                                )
+                                            ))
+                                        }
+                                    }
+                                }
+                            },
+                            onNavigateToDetail = onNavigateToDetail,
+                            appColors = appColors
+                        )
+                        HorizontalDivider(color = appColors.divider.copy(alpha = 0.3f))
                     }
                 }
             }
@@ -176,79 +251,175 @@ fun FavoriteScreen(
 }
 
 /**
- * 收藏项卡片
+ * 收藏项卡片（极简现代风）
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FavoriteItemCard(
     favorite: FavoriteEntity,
-    onDelete: () -> Unit
+    isSelected: Boolean = false,
+    onDelete: () -> Unit,
+    onLongClick: () -> Unit = {},
+    onClick: () -> Unit = {},
+    onNavigateToDetail: (DetailType) -> Unit = {},
+    appColors: com.example.trip_planner.ui.theme.AppColors
 ) {
-    val typeIcon = when (favorite.type) {
-        "HOTEL" -> "🏨"
-        "RESTAURANT" -> "🍽️"
-        "ATTRACTION" -> "🏛️"
-        else -> "📍"
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .background(
+                if (isSelected) appColors.brandTeal.copy(alpha = 0.1f) else Color.Transparent
+            )
+            .padding(vertical = 12.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
         ) {
+            if (isSelected) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = appColors.brandTeal,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "$typeIcon ${favorite.name}",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    favorite.name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = appColors.textPrimary
                 )
-                if (favorite.rating.isNotEmpty()) {
-                    Text(
-                        "⭐ ${favorite.rating}",
-                        color = TextSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                if (favorite.price.isNotEmpty()) {
-                    Text(
-                        "💰 ${favorite.price}",
-                        color = BrandTeal,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-                if (favorite.address.isNotEmpty()) {
-                    Text(
-                        "📍 ${favorite.address}",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (favorite.type != FavoriteType.TRIP_PLAN.name) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        if (favorite.rating.isNotEmpty()) {
+                            Text(
+                                favorite.rating,
+                                color = appColors.textSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                        if (favorite.price.isNotEmpty()) {
+                            Text(
+                                favorite.price,
+                                color = appColors.brandTeal,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                    if (favorite.address.isNotEmpty()) {
+                        Text(
+                            favorite.address,
+                            color = appColors.textSecondary,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                } else {
+                    if (favorite.description.isNotEmpty()) {
+                        Text(
+                            favorite.description,
+                            color = appColors.textSecondary,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = Color.Red.copy(alpha = 0.7f)
-                )
+            TextButton(onClick = onDelete) {
+                Text("删除", color = appColors.error.copy(alpha = 0.7f), fontSize = 12.sp)
             }
         }
     }
 }
 
 /**
- * 空收藏状态
+ * 可滑动收藏卡片（极简现代风）
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SwipeableFavoriteCard(
+    favorite: FavoriteEntity,
+    isSelected: Boolean = false,
+    onDelete: () -> Unit,
+    onLongClick: () -> Unit = {},
+    onClick: () -> Unit = {},
+    onNavigateToDetail: (DetailType) -> Unit = {},
+    appColors: com.example.trip_planner.ui.theme.AppColors
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { dismissValue ->
+            when (dismissValue) {
+                SwipeToDismissBoxValue.EndToStart -> {
+                    onDelete()
+                    true
+                }
+                else -> false
+            }
+        }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            val direction = dismissState.dismissDirection
+            val color = when {
+                direction == SwipeToDismissBoxValue.EndToStart -> appColors.error.copy(alpha = 0.15f)
+                else -> Color.Transparent
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(color)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                if (direction == SwipeToDismissBoxValue.EndToStart) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = appColors.error,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        },
+        content = {
+            FavoriteItemCard(
+                favorite = favorite,
+                isSelected = isSelected,
+                onDelete = onDelete,
+                onLongClick = onLongClick,
+                onClick = onClick,
+                onNavigateToDetail = onNavigateToDetail,
+                appColors = appColors
+            )
+        }
+    )
+}
+
+/**
+ * 空收藏状态（极简现代风）
  */
 @Composable
-fun EmptyFavoriteState() {
+fun EmptyFavoriteState(
+    appColors: com.example.trip_planner.ui.theme.AppColors,
+    onNavigateToPlan: (() -> Unit)? = null
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -257,102 +428,28 @@ fun EmptyFavoriteState() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("💔", fontSize = 48.sp)
-            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "还没有收藏哦",
-                color = TextSecondary,
+                color = appColors.textSecondary,
                 fontSize = 14.sp
             )
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "快去收藏喜欢的酒店、景点吧",
-                color = TextSecondary,
+                "快去收藏喜欢的行程、酒店、景点吧",
+                color = appColors.textSecondary,
                 fontSize = 12.sp
             )
-        }
-    }
-}
-
-/**
- * 行程规划卡片
- */
-@Composable
-fun TripPlanCard(
-    tripPlan: TripPlanEntity,
-    onDelete: () -> Unit
-) {
-    val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-    val dateStr = dateFormat.format(java.util.Date(tripPlan.timestamp))
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "📋 ${tripPlan.destination} - ${tripPlan.days}天",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
-                if (tripPlan.preferences.isNotEmpty()) {
+            if (onNavigateToPlan != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = onNavigateToPlan) {
                     Text(
-                        "偏好: ${tripPlan.preferences}",
-                        color = TextSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 4.dp)
+                        "去规划行程",
+                        color = appColors.brandTeal,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
-                Text(
-                    "🕐 $dateStr",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
             }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "删除",
-                    tint = Color.Red.copy(alpha = 0.7f)
-                )
-            }
-        }
-    }
-}
-
-/**
- * 空行程规划状态
- */
-@Composable
-fun EmptyTripPlanState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text("📋", fontSize = 48.sp)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "还没有行程规划哦",
-                color = TextSecondary,
-                fontSize = 14.sp
-            )
-            Text(
-                "快去创建你的第一个旅行规划吧",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
         }
     }
 }

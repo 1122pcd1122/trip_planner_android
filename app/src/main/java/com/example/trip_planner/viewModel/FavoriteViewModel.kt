@@ -18,16 +18,19 @@ import kotlinx.coroutines.launch
  */
 class FavoriteViewModel(application: Application) : AndroidViewModel(application) {
 
+    /** 收藏仓库实例，负责数据库操作 */
     private val repository: FavoriteRepository
 
+    /** 所有收藏列表的原始数据流 */
     private val _allFavorites = MutableStateFlow<List<FavoriteEntity>>(emptyList())
+    /** 对外暴露的只读收藏列表 */
     val allFavorites: StateFlow<List<FavoriteEntity>> = _allFavorites.asStateFlow()
 
+    /** 当前选中的收藏类型（hotel/attraction/restaurant），null 表示全部 */
     private val _selectedType = MutableStateFlow<String?>(null)
-    val selectedType: StateFlow<String?> = _selectedType.asStateFlow()
 
+    /** 过滤后的收藏列表，根据选中类型动态更新 */
     private val _filteredFavorites = MutableStateFlow<List<FavoriteEntity>>(emptyList())
-    val filteredFavorites: StateFlow<List<FavoriteEntity>> = _filteredFavorites.asStateFlow()
 
     init {
         val database = TripDatabase.getDatabase(application)
@@ -47,19 +50,20 @@ class FavoriteViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /**
-     * 按类型筛选
-     */
-    fun selectType(type: String?) {
-        _selectedType.value = type
-        filterByType(type)
-    }
-
     private fun filterByType(type: String?) {
         _filteredFavorites.value = if (type == null) {
             _allFavorites.value
         } else {
             _allFavorites.value.filter { it.type == type }
+        }
+    }
+
+    /**
+     * 添加收藏
+     */
+    fun addFavorite(favorite: FavoriteEntity) {
+        viewModelScope.launch {
+            repository.addFavorite(favorite)
         }
     }
 
@@ -72,17 +76,4 @@ class FavoriteViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /**
-     * 切换收藏状态
-     */
-    suspend fun toggleFavorite(favorite: FavoriteEntity): Boolean {
-        return repository.toggleFavorite(favorite)
-    }
-
-    /**
-     * 获取各类型收藏数量
-     */
-    fun getTypeCount(type: String): Int {
-        return _allFavorites.value.count { it.type == type }
-    }
 }

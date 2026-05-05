@@ -17,6 +17,11 @@ class TripPlanRepository(private val tripPlanDao: TripPlanDao) {
     fun getAllTripPlans(): Flow<List<TripPlanEntity>> = tripPlanDao.getAllTripPlans()
 
     /**
+     * 获取指定用户的行程规划
+     */
+    fun getTripPlansByUserId(userId: Long): Flow<List<TripPlanEntity>> = tripPlanDao.getTripPlansByUserId(userId)
+
+    /**
      * 获取单个行程规划
      */
     suspend fun getTripPlanById(id: Long): TripPlanEntity? = tripPlanDao.getTripPlanById(id)

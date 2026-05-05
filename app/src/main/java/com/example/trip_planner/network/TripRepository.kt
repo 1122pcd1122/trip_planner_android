@@ -1,20 +1,22 @@
 package com.example.trip_planner.network
 
 import android.util.Log
-import androidx.compose.ui.platform.LocalTextToolbar
-import com.amap.api.maps.model.LatLng
 import com.example.trip_planner.network.model.AgentResult
+import com.example.trip_planner.network.model.AttractionData
 import com.example.trip_planner.network.model.AttractionResponse
+import com.example.trip_planner.network.model.DetailRequest
+import com.example.trip_planner.network.model.HotelData
 import com.example.trip_planner.network.model.HotelResponse
+import com.example.trip_planner.network.model.RestaurantData
 import com.example.trip_planner.network.model.RestaurantResponse
 import com.example.trip_planner.network.model.TripPlanResponse
 import com.example.trip_planner.network.model.TripPlanRequest
 import com.example.trip_planner.network.model.WeatherListResponse
 import com.example.trip_planner.network.model.WeatherResponse
-import com.example.trip_planner.ui.content.PoiModel
-import com.example.trip_planner.ui.content.PoiType
+import com.example.trip_planner.ui.screens.PoiModel
+import com.example.trip_planner.ui.screens.PoiType
+import com.google.android.gms.maps.model.LatLng
 import com.google.gson.Gson
-import com.google.gson.JsonElement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -46,16 +48,20 @@ class TripRepository {
      * 获取天气信息
      * 
      * @param destination 目的地城市
-     * @param days 天数
+     * @param days 天数（兼容旧版）
+     * @param startDate 开始日期（新版）
+     * @param endDate 结束日期（新版）
      * @param preferences 用户偏好
      * @return AgentResult<List<WeatherResponse>> 天气数据列表或多天数据
      */
-    suspend fun fetchWeather(destination: String, days: String, preferences: String): AgentResult<List<WeatherResponse>> = withContext(Dispatchers.IO) {
-        Log.i(TAG, "📡 开始请求天气数据: destination=$destination, days=$days, preferences=$preferences",)
+    suspend fun fetchWeather(destination: String, days: String, startDate: String = "", endDate: String = "", preferences: String): AgentResult<List<WeatherResponse>> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "📡 开始请求天气数据: destination=$destination, days=$days, startDate=$startDate, endDate=$endDate, preferences=$preferences",)
         try {
             val request = TripPlanRequest(
                 destination = destination,
                 days = days,
+                startDate = startDate,
+                endDate = endDate,
                 preferences = preferences
             )
 
@@ -90,14 +96,20 @@ class TripRepository {
      * 获取景点列表
      * 
      * @param destination 目的地城市
+     * @param days 天数（兼容旧版）
+     * @param startDate 开始日期（新版）
+     * @param endDate 结束日期（新版）
+     * @param preferences 用户偏好
      * @return AgentResult<List<PoiModel>> 景点列表（转换为 PoiModel）或错误信息
      */
-    suspend fun fetchAttractions(destination: String, days: String, preferences: String): AgentResult<List<PoiModel>> = withContext(Dispatchers.IO) {
-        Log.i(TAG, "📡 开始请求景点数据: destination=$destination, days=$days, preferences=$preferences")
+    suspend fun fetchAttractions(destination: String, days: String, startDate: String = "", endDate: String = "", preferences: String): AgentResult<AttractionData> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "📡 开始请求景点数据: destination=$destination, days=$days, startDate=$startDate, endDate=$endDate, preferences=$preferences")
         try {
             val request = TripPlanRequest(
                 destination = destination,
                 days = days,
+                startDate = startDate,
+                endDate = endDate,
                 preferences = preferences
             )
             val response = apiService.getAttractions(request)
@@ -112,7 +124,8 @@ class TripRepository {
                         return@withContext AgentResult.Error("景点数据解析失败")
                     }
                     
-                    val allPois = attractionResponse.spotList.map { spot ->
+                    val spotInfoList = attractionResponse.spotList
+                    val allPois = spotInfoList.map { spot ->
                         PoiModel(
                             name = spot.name,
                             rating = spot.score,
@@ -130,7 +143,7 @@ class TripRepository {
                     }
                     
                     Log.i(TAG, "✅ 景点数据解析完成: ${allPois.size} 个景点")
-                    AgentResult.Success(allPois)
+                    AgentResult.Success(AttractionData(spotInfoList, allPois))
                 } catch (e: Exception) {
                     Log.e(TAG, "❌ 景点解析失败: ${e.message}")
                     AgentResult.Error("数据解析失败: ${e.message}")
@@ -149,15 +162,21 @@ class TripRepository {
      * 获取酒店列表
      * 
      * @param destination 目的地城市
+     * @param days 天数（兼容旧版）
+     * @param startDate 开始日期（新版）
+     * @param endDate 结束日期（新版）
+     * @param preferences 用户偏好
      * @return AgentResult<List<PoiModel>> 酒店列表（转换为 PoiModel）或错误信息
      */
-    suspend fun fetchHotels(destination: String, days: String, preferences: String): AgentResult<List<PoiModel>> = withContext(Dispatchers.IO) {
-        Log.i(TAG, "📡 开始请求酒店数据: destination=$destination, days=$days, preferences=$preferences")
+    suspend fun fetchHotels(destination: String, days: String, startDate: String = "", endDate: String = "", preferences: String): AgentResult<HotelData> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "📡 开始请求酒店数据: destination=$destination, days=$days, startDate=$startDate, endDate=$endDate, preferences=$preferences")
         try {
 
             val request = TripPlanRequest(
                 destination = destination,
                 days = days,
+                startDate = startDate,
+                endDate = endDate,
                 preferences = preferences
             )
             val response = apiService.getHotels(request)
@@ -172,7 +191,8 @@ class TripRepository {
                         return@withContext AgentResult.Error("酒店数据解析失败")
                     }
                     
-                    val poiList = hotelResponse.hotelList.map { hotel ->
+                    val hotelInfoList = hotelResponse.hotelList
+                    val poiList = hotelInfoList.map { hotel ->
                         PoiModel(
                             name = hotel.name,
                             rating = "",
@@ -190,7 +210,7 @@ class TripRepository {
                     }
                     
                     Log.i(TAG, "✅ 酒店数据解析完成: ${poiList.size} 家酒店")
-                    AgentResult.Success(poiList)
+                    AgentResult.Success(HotelData(hotelInfoList, poiList))
                 } catch (e: Exception) {
                     Log.e(TAG, "❌ 酒店解析失败: ${e.message}")
                     AgentResult.Error("数据解析失败: ${e.message}")
@@ -209,15 +229,21 @@ class TripRepository {
      * 获取餐厅列表
      * 
      * @param destination 目的地城市
+     * @param days 天数（兼容旧版）
+     * @param startDate 开始日期（新版）
+     * @param endDate 结束日期（新版）
+     * @param preferences 用户偏好
      * @return AgentResult<List<PoiModel>> 餐厅列表（转换为 PoiModel）或错误信息
      */
-    suspend fun fetchRestaurants(destination: String, days: String, preferences: String): AgentResult<List<PoiModel>> = withContext(Dispatchers.IO) {
-        Log.i(TAG, "📡 开始请求餐厅数据: destination=$destination, days=$days, preferences=$preferences")
+    suspend fun fetchRestaurants(destination: String, days: String, startDate: String = "", endDate: String = "", preferences: String): AgentResult<RestaurantData> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "📡 开始请求餐厅数据: destination=$destination, days=$days, startDate=$startDate, endDate=$endDate, preferences=$preferences")
         try {
 
             val request = TripPlanRequest(
                 destination = destination,
                 days = days,
+                startDate = startDate,
+                endDate = endDate,
                 preferences = preferences
             )
             val response = apiService.getRestaurants(request)
@@ -233,7 +259,8 @@ class TripRepository {
                         return@withContext AgentResult.Error("餐厅数据解析失败")
                     }
                     
-                    val poiList = restaurantResponse.foodList.map { food ->
+                    val restaurantInfoList = restaurantResponse.foodList
+                    val poiList = restaurantInfoList.map { food ->
                         PoiModel(
                             name = food.name,
                             rating = food.score,
@@ -251,7 +278,7 @@ class TripRepository {
                     }
                     
                     Log.i(TAG, "✅ 餐厅数据解析完成: ${poiList.size} 家餐厅")
-                    AgentResult.Success(poiList)
+                    AgentResult.Success(RestaurantData(restaurantInfoList, poiList))
                 } catch (e: Exception) {
                     Log.e(TAG, "❌ 餐厅解析失败: ${e.message}")
                     AgentResult.Error("数据解析失败: ${e.message}")
@@ -273,16 +300,20 @@ class TripRepository {
      * 包含天气、景点、酒店、餐厅和行程汇总
      * 
      * @param destination 目的地城市
-     * @param days 游玩天数
+     * @param days 游玩天数（兼容旧版）
+     * @param startDate 开始日期（新版）
+     * @param endDate 结束日期（新版）
      * @param preferences 用户偏好
      * @return AgentResult<TripAllResponse> 统一响应结果
      */
-    suspend fun fetchAllInOne(destination: String, days: String, preferences: String): AgentResult<TripPlanResponse> = withContext(Dispatchers.IO) {
-        Log.i(TAG, "🚀 开始一键生成完整旅行规划: destination=$destination, days=$days, preferences=$preferences")
+    suspend fun fetchAllInOne(destination: String, days: String, startDate: String = "", endDate: String = "", preferences: String): AgentResult<TripPlanResponse> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "🚀 开始一键生成完整旅行规划: destination=$destination, days=$days, startDate=$startDate, endDate=$endDate, preferences=$preferences")
         try {
             val request = TripPlanRequest(
                 destination = destination,
                 days = days,
+                startDate = startDate,
+                endDate = endDate,
                 preferences = preferences
             )
             val response = apiService.generateAllInOne(request)
@@ -308,6 +339,89 @@ class TripRepository {
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ 统一规划请求失败: ${e.message}")
+            AgentResult.Error("网络请求失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 获取酒店详情
+     * 
+     * @param name 酒店名称
+     * @param latitude 酒店纬度
+     * @param longitude 酒店经度
+     * @return AgentResult<String> 酒店详情 JSON 数据
+     */
+    suspend fun fetchHotelDetail(name: String, latitude: String, longitude: String): AgentResult<String> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "🔍 开始查询酒店详情: name=$name")
+        try {
+            val request = DetailRequest(
+                name = name,
+                type = "hotel",
+                latitude = latitude,
+                longitude = longitude
+            )
+            val response = apiService.getHotelDetail(request)
+            if (response.status == "success") {
+                Log.i(TAG, "✅ 酒店详情获取成功")
+                AgentResult.Success(response.message)
+            } else {
+                Log.e(TAG, "❌ 酒店详情 API 返回失败: ${response.message}")
+                AgentResult.Error(response.message)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 酒店详情请求失败: ${e.message}")
+            AgentResult.Error("网络请求失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 获取景点详情
+     * 
+     * @param name 景点名称
+     * @param latitude 景点纬度
+     * @param longitude 景点经度
+     * @return AgentResult<String> 景点详情 JSON 数据
+     */
+    suspend fun fetchAttractionDetail(name: String, latitude: String, longitude: String): AgentResult<String> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "🔍 开始查询景点详情: name=$name")
+        try {
+            val request = DetailRequest(name = name, type = "attraction", latitude = latitude, longitude = longitude)
+            val response = apiService.getAttractionDetail(request)
+            if (response.status == "success") {
+                Log.i(TAG, "✅ 景点详情获取成功")
+                AgentResult.Success(response.message)
+            } else {
+                Log.e(TAG, "❌ 景点详情 API 返回失败: ${response.message}")
+                AgentResult.Error(response.message)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 景点详情请求失败: ${e.message}")
+            AgentResult.Error("网络请求失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 获取餐厅详情
+     * 
+     * @param name 餐厅名称
+     * @param latitude 餐厅纬度
+     * @param longitude 餐厅经度
+     * @return AgentResult<String> 餐厅详情 JSON 数据
+     */
+    suspend fun fetchRestaurantDetail(name: String, latitude: String, longitude: String): AgentResult<String> = withContext(Dispatchers.IO) {
+        Log.i(TAG, "🔍 开始查询餐厅详情: name=$name")
+        try {
+            val request = DetailRequest(name = name, type = "restaurant", latitude = latitude, longitude = longitude)
+            val response = apiService.getRestaurantDetail(request)
+            if (response.status == "success") {
+                Log.i(TAG, "✅ 餐厅详情获取成功")
+                AgentResult.Success(response.message)
+            } else {
+                Log.e(TAG, "❌ 餐厅详情 API 返回失败: ${response.message}")
+                AgentResult.Error(response.message)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ 餐厅详情请求失败: ${e.message}")
             AgentResult.Error("网络请求失败: ${e.message}")
         }
     }
