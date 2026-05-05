@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,7 +53,7 @@ fun TripNotesSection(
     onNavigateToAdd: () -> Unit,
     onNavigateToEdit: (TripNoteEntity) -> Unit,
     onDeleteNote: (Long) -> Unit,
-    onUpdateNote: (TripNoteEntity) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onUpdateNote: (TripNoteEntity) -> Unit,
     appColors: AppColors,
     modifier: Modifier = Modifier
 ) {
@@ -151,7 +153,7 @@ fun TripNotesSection(
                     }
                 }) {
                     Icon(
-                        Icons.Default.Sort,
+                        Icons.AutoMirrored.Filled.Sort,
                         contentDescription = "排序",
                         tint = appColors.brandTeal,
                         modifier = Modifier.size(20.dp)
@@ -335,7 +337,7 @@ fun NoteCard(
     appColors: AppColors
 ) {
     val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-    val timeStr = dateFormat.format(Date(note.timestamp))
+    @Suppress("UNUSED_VARIABLE") val timeStr = dateFormat.format(Date(note.timestamp))
     val moodEmoji = TravelMood.entries.find { it.label == note.mood }?.emoji ?: ""
     val photoList = remember(note.photoPaths) {
         if (note.photoPaths.isNotEmpty()) {
@@ -456,9 +458,11 @@ fun NoteCard(
             Spacer(modifier = Modifier.height(8.dp))
             MarkdownText(
                 markdown = note.content,
-                fontSize = 11.sp,
-                color = appColors.textSecondary,
-                lineHeight = 16.sp,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = 11.sp,
+                    color = appColors.textSecondary,
+                    lineHeight = 16.sp
+                ),
                 maxLines = 6
             )
         }
@@ -507,7 +511,7 @@ fun MarkdownNoteDialog(
     }
     var showPreview by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
+    @Suppress("UNUSED_VARIABLE") val context = LocalContext.current
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 5),
         onResult = { uris ->
@@ -579,9 +583,11 @@ fun MarkdownNoteDialog(
                         } else {
                             MarkdownText(
                                 markdown = content,
-                                fontSize = 12.sp,
-                                color = appColors.textPrimary,
-                                lineHeight = 18.sp
+                                style = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 12.sp,
+                                    color = appColors.textPrimary,
+                                    lineHeight = 18.sp
+                                )
                             )
                         }
                     }
@@ -642,7 +648,7 @@ fun MarkdownNoteDialog(
                             appColors = appColors
                         )
                         MarkdownToolbarButton(
-                            icon = Icons.Default.List,
+                            icon = Icons.AutoMirrored.Filled.List,
                             label = "-",
                             onClick = {
                                 content += "\n- "

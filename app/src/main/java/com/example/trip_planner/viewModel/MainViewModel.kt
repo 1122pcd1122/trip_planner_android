@@ -1,5 +1,6 @@
 package com.example.trip_planner.viewModel
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.mutableStateMapOf
@@ -565,14 +566,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * @param itemIndex 景点的索引（从0开始）
      */
     fun removeItineraryItem(dayIndex: Int, itemIndex: Int) {
-        val updatedPlans = dayPlans.value.toMutableList()
+        val updatedPlans = _dayPlans.value.toMutableList()
         if (dayIndex in updatedPlans.indices) {
             val day = updatedPlans[dayIndex]
             val updatedItinerary = day.itinerary.toMutableList()
             if (itemIndex in updatedItinerary.indices) {
                 updatedItinerary.removeAt(itemIndex)
                 updatedPlans[dayIndex] = day.copy(itinerary = updatedItinerary)
-                dayPlans.value = updatedPlans
+                _dayPlans.value = updatedPlans
                 Log.i(TAG, "✅ 已删除第${dayIndex + 1}天第${itemIndex + 1}个景点")
             }
         }
@@ -583,12 +584,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * @param dayIndex 天的索引（从0开始）
      */
     fun removeLunch(dayIndex: Int) {
-        val updatedPlans = dayPlans.value.toMutableList()
+        val updatedPlans = _dayPlans.value.toMutableList()
         if (dayIndex in updatedPlans.indices) {
             val day = updatedPlans[dayIndex]
             val updatedMeals = day.meals?.copy(lunch = null)
             updatedPlans[dayIndex] = day.copy(meals = updatedMeals)
-            dayPlans.value = updatedPlans
+            _dayPlans.value = updatedPlans
             Log.i(TAG, "✅ 已删除第${dayIndex + 1}天午餐")
         }
     }
@@ -598,12 +599,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * @param dayIndex 天的索引（从0开始）
      */
     fun removeDinner(dayIndex: Int) {
-        val updatedPlans = dayPlans.value.toMutableList()
+        val updatedPlans = _dayPlans.value.toMutableList()
         if (dayIndex in updatedPlans.indices) {
             val day = updatedPlans[dayIndex]
             val updatedMeals = day.meals?.copy(dinner = null)
             updatedPlans[dayIndex] = day.copy(meals = updatedMeals)
-            dayPlans.value = updatedPlans
+            _dayPlans.value = updatedPlans
             Log.i(TAG, "✅ 已删除第${dayIndex + 1}天晚餐")
         }
     }
@@ -615,7 +616,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * @param toIndex 目标位置
      */
     fun moveItineraryItem(dayIndex: Int, fromIndex: Int, toIndex: Int) {
-        val updatedPlans = dayPlans.value.toMutableList()
+        val updatedPlans = _dayPlans.value.toMutableList()
         if (dayIndex in updatedPlans.indices) {
             val day = updatedPlans[dayIndex]
             val updatedItinerary = day.itinerary.toMutableList()
@@ -623,8 +624,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val item = updatedItinerary.removeAt(fromIndex)
                 updatedItinerary.add(toIndex, item)
                 updatedPlans[dayIndex] = day.copy(itinerary = updatedItinerary)
-                dayPlans.value = updatedPlans
-                Log.i(TAG, "✅ 已移动第${dayIndex + 1}天景点: $fromIndex -> $toIndex")
+                _dayPlans.value = updatedPlans
+                Log.i(TAG, "✅ 已移动第${dayIndex + 1}天景点：$fromIndex -> $toIndex")
             }
         }
     }
@@ -633,9 +634,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 更新行程计划（用于编辑器保存）
      */
     fun updatePlans(updatedDays: List<DayPlan>, updatedHotels: List<PlanHotel>, updatedTips: String) {
-        dayPlans.value = updatedDays
-        planHotels.value = updatedHotels
-        overallTips.value = updatedTips
+        _dayPlans.value = updatedDays
+        _planHotels.value = updatedHotels
+        _overallTips.value = updatedTips
         Log.i(TAG, "✅ 已更新行程计划: ${updatedDays.size}天, ${updatedHotels.size}家酒店")
     }
 
@@ -647,23 +648,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val plan = tripPlanRepository.getTripPlanById(planId)
                 if (plan != null) {
-                    destination.value = plan.destination
-                    days.value = plan.days.toString()
-                    preferences.value = plan.preferences
-                    overallTips.value = plan.overallTips
+                    setDestination(plan.destination)
+                    setDays(plan.days.toString())
+                    setPreferences(plan.preferences)
+                    _overallTips.value = plan.overallTips
                     
                     if (plan.dayPlansJson.isNotEmpty()) {
-                        dayPlans.value = Json.decodeFromString(plan.dayPlansJson)
-                        Log.i(TAG, "✅ 加载历史记录: ${dayPlans.value.size} 天行程")
+                        _dayPlans.value = Json.decodeFromString(plan.dayPlansJson)
+                        Log.i(TAG, "✅ 加载历史记录: ${_dayPlans.value.size} 天行程")
                     }
                     
                     if (plan.hotelJson.isNotEmpty()) {
-                        planHotels.value = Json.decodeFromString(plan.hotelJson)
-                        Log.i(TAG, "✅ 加载历史记录: ${planHotels.value.size} 家酒店")
+                        _planHotels.value = Json.decodeFromString(plan.hotelJson)
+                        Log.i(TAG, "✅ 加载历史记录: ${_planHotels.value.size} 家酒店")
                     }
                     
                     setAgentUiState(AgentType.ALL, "Success")
-                    selectedAgent.value = AgentType.ALL
+                    setSelectedAgent(AgentType.ALL)
                 } else {
                     Log.e(TAG, "❌ 未找到历史记录: $planId")
                 }
@@ -691,6 +692,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+@SuppressLint("UnsafeOptInUsageError")
 @Serializable
 data class TripPlanSyncData(
     val destination: String,

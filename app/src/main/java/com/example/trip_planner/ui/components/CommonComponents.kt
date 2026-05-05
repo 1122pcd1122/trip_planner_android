@@ -84,7 +84,7 @@ fun PoiCard(
     rating: String = "",
     price: String = "",
     description: String,
-    icon: String,
+    @Suppress("UNUSED_PARAMETER") icon: String,
     favoriteId: String,
     favoriteType: FavoriteType,
     favoriteViewModel: FavoriteViewModel,
@@ -346,7 +346,7 @@ fun SkeletonLoader(
  */
 @Composable
 fun ListItemSkeleton(
-    appColors: AppColors = com.example.trip_planner.ui.theme.LocalAppColors.current
+    @Suppress("UNUSED_PARAMETER") appColors: AppColors = com.example.trip_planner.ui.theme.LocalAppColors.current
 ) {
     Column(
         modifier = Modifier

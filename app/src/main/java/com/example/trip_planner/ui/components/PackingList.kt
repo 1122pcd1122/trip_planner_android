@@ -143,7 +143,7 @@ fun PackingListSection(
                     .padding(horizontal = 16.dp)
             ) {
                 LinearProgressIndicator(
-                    progress = progress,
+                    progress = { progress },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp)
@@ -573,7 +573,7 @@ fun AddPackingItemDialog(
 @Composable
 fun TemplateListDialog(
     onDismiss: () -> Unit,
-    onLoadTemplate: (Long) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onLoadTemplate: (Long) -> Unit,
     onSaveTemplate: () -> Unit,
     appColors: AppColors
 ) {
@@ -596,7 +596,7 @@ fun TemplateListDialog(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("保存当前清单为模板", fontSize = 12.sp)
                 }
-                Divider(color = appColors.divider)
+                HorizontalDivider(color = appColors.divider)
                 Text("已有模板", fontSize = 12.sp, color = appColors.textSecondary)
                 Box(
                     modifier = Modifier

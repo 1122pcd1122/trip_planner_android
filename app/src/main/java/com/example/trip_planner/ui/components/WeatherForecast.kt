@@ -129,7 +129,7 @@ fun WeatherDayCard(
     weather: WeatherCacheEntity,
     appColors: AppColors
 ) {
-    val tempGradient = getTempGradient(weather.temperature)
+    @Suppress("UNUSED_VARIABLE") val tempGradient = getTempGradient(weather.temperature)
     val dateDisplay = WeatherUtils.formatDate(weather.date)
 
     Column(

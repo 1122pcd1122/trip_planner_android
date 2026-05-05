@@ -344,7 +344,7 @@ fun DayPlanItem(
  */
 @Composable
 fun HotelItem(
-    hotelIndex: Int,
+    @Suppress("UNUSED_PARAMETER") hotelIndex: Int,
     hotel: PlanHotel,
     onEdit: () -> Unit,
     onDelete: () -> Unit,

@@ -112,13 +112,13 @@ fun TravelPlannerScreen(
     onHistoryPlanLoaded: () -> Unit = {}
 ) {
     val appColors = MaterialTheme.appColors
-    val weatherData by viewModel.weatherData
-    val hotelData by viewModel.hotelData
-    val restaurantData by viewModel.restaurantData
-    val attractionData by viewModel.attractionData
-    val dayPlans by viewModel.dayPlans
-    val planHotels by viewModel.planHotels
-    val overallTips by viewModel.overallTips
+    val weatherData by viewModel.weatherData.collectAsState()
+    val hotelData by viewModel.hotelData.collectAsState()
+    val restaurantData by viewModel.restaurantData.collectAsState()
+    val attractionData by viewModel.attractionData.collectAsState()
+    val dayPlans by viewModel.dayPlans.collectAsState()
+    val planHotels by viewModel.planHotels.collectAsState()
+    val overallTips by viewModel.overallTips.collectAsState()
     var selectedTab by remember { mutableStateOf(AgentType.ALL) }
     val context = LocalContext.current
     val networkMonitor = remember { NetworkMonitor(context) }
@@ -135,7 +135,7 @@ fun TravelPlannerScreen(
     }
 
     LaunchedEffect(selectedTab) {
-        viewModel.selectedAgent.value = selectedTab
+        viewModel.setSelectedAgent(selectedTab)
     }
 
     LaunchedEffect(historyPlanId) {
@@ -182,7 +182,7 @@ fun TravelPlannerScreen(
                     selected = selectedTab == tab,
                     onClick = {
                         selectedTab = tab
-                        viewModel.selectedAgent.value = tab
+                        viewModel.setSelectedAgent(tab)
                     },
                     text = {
                         Text(
@@ -343,7 +343,7 @@ fun InputCard(
             OutlinedTextField(
                 value = viewModel.destination.value,
                 onValueChange = { 
-                    viewModel.destination.value = it
+                    viewModel.setDestination(it)
                     searchQuery = it
                     showDestinations = it.isNotEmpty()
                 },
@@ -358,7 +358,7 @@ fun InputCard(
                 trailingIcon = {
                     if (viewModel.destination.value.isNotEmpty()) {
                         IconButton(onClick = { 
-                            viewModel.destination.value = ""
+                            viewModel.setDestination("")
                             showDestinations = false
                             searchQuery = ""
                         }) {
@@ -396,7 +396,7 @@ fun InputCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        viewModel.destination.value = city
+                                        viewModel.setDestination(city)
                                         showDestinations = false
                                         searchQuery = ""
                                     }
@@ -436,7 +436,7 @@ fun InputCard(
             IconButton(
                 onClick = {
                     val current = viewModel.days.value.toIntOrNull() ?: 1
-                    if (current > 1) viewModel.days.value = (current - 1).toString()
+                    if (current > 1) viewModel.setDays((current - 1).toString())
                 },
                 enabled = (viewModel.days.value.toIntOrNull() ?: 1) > 1,
                 modifier = Modifier.size(40.dp)
@@ -449,7 +449,7 @@ fun InputCard(
                 onValueChange = { 
                     val num = it.toIntOrNull()
                     if (num == null || num in 1..30) {
-                        viewModel.days.value = it
+                        viewModel.setDays(it)
                     }
                 },
                 placeholder = { Text("天数", color = appColors.textSecondary) },
@@ -467,7 +467,7 @@ fun InputCard(
             IconButton(
                 onClick = {
                     val current = viewModel.days.value.toIntOrNull() ?: 1
-                    if (current < 30) viewModel.days.value = (current + 1).toString()
+                    if (current < 30) viewModel.setDays((current + 1).toString())
                 },
                 enabled = (viewModel.days.value.toIntOrNull() ?: 1) < 30,
                 modifier = Modifier.size(40.dp)
@@ -483,7 +483,7 @@ fun InputCard(
             listOf(2, 3, 5, 7).forEach { days ->
                 FilterChip(
                     selected = viewModel.days.value == days.toString(),
-                    onClick = { viewModel.days.value = days.toString() },
+                    onClick = { viewModel.setDays(days.toString()) },
                     label = { Text("${days}天", fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = appColors.brandTeal,
@@ -540,7 +540,7 @@ fun InputCard(
                                 } else {
                                     selectedPrefs.add(tag.label)
                                 }
-                                viewModel.preferences.value = selectedPrefs.joinToString(",")
+                                viewModel.setPreferences(selectedPrefs.joinToString(","))
                             },
                             leadingIcon = { Text(tag.icon, fontSize = 14.sp) },
                             label = { Text(tag.label, fontSize = 12.sp) },
@@ -662,16 +662,16 @@ fun WeatherInputCard(
         ) {
             com.example.trip_planner.ui.components.CitySelector(
                 selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.destination.value = it },
+                onCitySelected = { viewModel.setDestination(it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
                 startDate = viewModel.startDate.value,
                 endDate = viewModel.endDate.value,
-                onDateRangeSelected = { start, end ->
-                    viewModel.startDate.value = start
-                    viewModel.endDate.value = end
+                onDateRangeSelected = { start: String, end: String ->
+                    viewModel.setStartDate(start)
+                    viewModel.setEndDate(end)
                 },
                 appColors = appColors
             )
@@ -845,16 +845,16 @@ fun HotelInputCard(
         ) {
             com.example.trip_planner.ui.components.CitySelector(
                 selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.destination.value = it },
+                onCitySelected = { viewModel.setDestination(it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
                 startDate = viewModel.startDate.value,
                 endDate = viewModel.endDate.value,
-                onDateRangeSelected = { start, end ->
-                    viewModel.startDate.value = start
-                    viewModel.endDate.value = end
+                onDateRangeSelected = { start: String, end: String ->
+                    viewModel.setStartDate(start)
+                    viewModel.setEndDate(end)
                 },
                 appColors = appColors
             )
@@ -962,16 +962,16 @@ fun AttractionInputCard(
         ) {
             com.example.trip_planner.ui.components.CitySelector(
                 selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.destination.value = it },
+                onCitySelected = { viewModel.setDestination(it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
                 startDate = viewModel.startDate.value,
                 endDate = viewModel.endDate.value,
-                onDateRangeSelected = { start, end ->
-                    viewModel.startDate.value = start
-                    viewModel.endDate.value = end
+                onDateRangeSelected = { start: String, end: String ->
+                    viewModel.setStartDate(start)
+                    viewModel.setEndDate(end)
                 },
                 appColors = appColors
             )
@@ -1092,16 +1092,16 @@ fun RestaurantInputCard(
         ) {
             com.example.trip_planner.ui.components.CitySelector(
                 selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.destination.value = it },
+                onCitySelected = { viewModel.setDestination(it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
                 startDate = viewModel.startDate.value,
                 endDate = viewModel.endDate.value,
-                onDateRangeSelected = { start, end ->
-                    viewModel.startDate.value = start
-                    viewModel.endDate.value = end
+                onDateRangeSelected = { start: String, end: String ->
+                    viewModel.setStartDate(start)
+                    viewModel.setEndDate(end)
                 },
                 appColors = appColors
             )
@@ -1218,16 +1218,16 @@ fun AllInOneInputCard(
         ) {
             com.example.trip_planner.ui.components.CitySelector(
                 selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.destination.value = it },
+                onCitySelected = { viewModel.setDestination(it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
                 startDate = viewModel.startDate.value,
                 endDate = viewModel.endDate.value,
-                onDateRangeSelected = { start, end ->
-                    viewModel.startDate.value = start
-                    viewModel.endDate.value = end
+                onDateRangeSelected = { start: String, end: String ->
+                    viewModel.setStartDate(start)
+                    viewModel.setEndDate(end)
                 },
                 appColors = appColors
             )
@@ -1408,8 +1408,8 @@ fun SummaryContent(
     val favorites by favoriteViewModel.allFavorites.collectAsState()
     val tripPlanId = "TRIP_${viewModel.destination.value}_${viewModel.days.value}"
     val isTripFavorite = favorites.any { it.itemId == tripPlanId }
-    val isPlanSaved by viewModel.isPlanSaved
-    val currentSavedPlan by viewModel.currentSavedPlan
+    val isPlanSaved by viewModel.isPlanSaved.collectAsState()
+    val currentSavedPlan by viewModel.currentSavedPlan.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var isEditMode by remember { mutableStateOf(false) }
@@ -1515,9 +1515,10 @@ fun SummaryContent(
 
                         Button(
                             onClick = {
-                                currentSavedPlan?.let { plan ->
-                                    ShareUtils.shareTripPlan(context, plan)
-                                } ?: run {
+                                val savedPlan = currentSavedPlan
+                                if (savedPlan != null) {
+                                    ShareUtils.shareTripPlan(context, savedPlan)
+                                } else {
                                     scope.launch {
                                         snackbarHostState.showSnackbar("请先保存行程后再分享")
                                     }
@@ -2057,7 +2058,7 @@ fun PreferenceSearchSelector(
                         selected = true,
                         onClick = {
                             selectedPrefs.remove(tag)
-                            viewModel.preferences.value = selectedPrefs.joinToString(",")
+                            viewModel.setPreferences(selectedPrefs.joinToString(","))
                         },
                         leadingIcon = {
                             val matched = allTags.find { it.label == tag }
@@ -2129,7 +2130,7 @@ fun PreferenceSearchSelector(
                             } else {
                                 selectedPrefs.add(tag.label)
                             }
-                            viewModel.preferences.value = selectedPrefs.joinToString(",")
+                            viewModel.setPreferences(selectedPrefs.joinToString(","))
                         },
                         leadingIcon = { Text(tag.icon, fontSize = 12.sp) },
                         label = { Text(tag.label, fontSize = 11.sp) },

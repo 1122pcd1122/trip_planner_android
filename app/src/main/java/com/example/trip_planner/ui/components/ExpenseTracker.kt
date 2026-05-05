@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -81,7 +82,7 @@ fun ExpenseTracker(
                 if (expenses.isNotEmpty()) {
                     IconButton(onClick = { showTrendChart = !showTrendChart }) {
                         Icon(
-                            Icons.Default.ShowChart,
+                            Icons.AutoMirrored.Filled.ShowChart,
                             contentDescription = "趋势",
                             tint = appColors.brandTeal,
                             modifier = Modifier.size(20.dp)
@@ -223,7 +224,7 @@ fun ExpenseTracker(
 @Composable
 fun BudgetOverview(
     budgetAmount: Double,
-    totalExpense: Double,
+    @Suppress("UNUSED_PARAMETER") totalExpense: Double,
     remaining: Double,
     usagePercent: Double,
     appColors: AppColors
@@ -279,7 +280,7 @@ fun BudgetOverview(
 
         Box(modifier = Modifier.fillMaxWidth()) {
             LinearProgressIndicator(
-                progress = (usagePercent / 100).toFloat(),
+                progress = { (usagePercent / 100).toFloat() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp)

@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,11 +24,11 @@ import com.example.trip_planner.ui.screens.PoiModel
  * 排序方式枚举
  */
 enum class SortType(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    DEFAULT("默认排序", Icons.Default.List),
+    DEFAULT("默认排序", Icons.AutoMirrored.Filled.List),
     RATING_DESC("评分最高", Icons.Default.Star),
     RATING_ASC("评分最低", Icons.Default.StarBorder),
     NAME_ASC("名称A-Z", Icons.Default.SortByAlpha),
-    NAME_DESC("名称Z-A", Icons.Default.Sort)
+    NAME_DESC("名称Z-A", Icons.AutoMirrored.Filled.Sort)
 }
 
 /**
@@ -128,7 +130,7 @@ fun AgentFilterToolbar(
                     .size(36.dp)
             ) {
                 Icon(
-                    Icons.Default.Sort,
+                    Icons.AutoMirrored.Filled.Sort,
                     contentDescription = "排序",
                     tint = appColors.textSecondary,
                     modifier = Modifier.size(18.dp)
