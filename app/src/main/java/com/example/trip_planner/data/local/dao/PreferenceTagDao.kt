@@ -19,8 +19,14 @@ interface PreferenceTagDao {
     @Query("SELECT * FROM preference_tags WHERE category = :category ORDER BY label")
     fun getTagsByCategory(category: String): Flow<List<PreferenceTagEntity>>
 
+    @Query("SELECT * FROM preference_tags WHERE label = :label LIMIT 1")
+    suspend fun getTagByLabel(label: String): PreferenceTagEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTags(tags: List<PreferenceTagEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSingleTag(tag: PreferenceTagEntity)
 
     @Query("DELETE FROM preference_tags")
     suspend fun clearAllTags()

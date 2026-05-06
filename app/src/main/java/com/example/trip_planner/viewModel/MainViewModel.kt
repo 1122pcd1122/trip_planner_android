@@ -47,6 +47,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val tripPlanRepository: TripPlanRepository
     private val authRepository = AuthRepository()
+    private val preferenceTagRepository by lazy {
+        val database = TripDatabase.getDatabase(getApplication())
+        com.example.trip_planner.data.repository.PreferenceTagRepository(database.preferenceTagDao())
+    }
 
     init {
         val database = TripDatabase.getDatabase(application)
@@ -146,10 +150,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setResultData(value: String) { _resultData.value = value }
     fun setIsPlanSaved(value: Boolean) { _isPlanSaved.value = value }
 
-    private var weatherJob: Job? = null
-    private var hotelJob: Job? = null
-    private var restaurantJob: Job? = null
-    private var attractionJob: Job? = null
+    private val agentJobs = mutableMapOf<AgentType, Job?>()
     private var allInOneJob: Job? = null
 
     fun generateTripPlan() {
@@ -177,12 +178,74 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelCurrentRequest() {
-        weatherJob?.cancel()
-        hotelJob?.cancel()
-        restaurantJob?.cancel()
-        attractionJob?.cancel()
+        agentJobs.values.forEach { it?.cancel() }
         allInOneJob?.cancel()
         Log.i(TAG, "🛑 已取消当前请求")
+    }
+
+    private fun <R, T> fetchData(
+        agentType: AgentType,
+        stateFlow: MutableStateFlow<UiState<T>>,
+        fetchFunction: suspend () -> AgentResult<R>,
+        transform: (R) -> T,
+        onSuccess: (R) -> Unit,
+        dataName: String
+    ) {
+        agentJobs[agentType]?.cancel()
+        
+        agentJobs[agentType] = viewModelScope.launch {
+            stateFlow.value = UiState.Loading
+            setAgentUiState(agentType, "Loading")
+            
+            val result = fetchFunction()
+            
+            when (result) {
+                is AgentResult.Success -> {
+                    val transformedData = transform(result.data)
+                    onSuccess(result.data)
+                    stateFlow.value = UiState.Success(transformedData)
+                    setAgentUiState(agentType, "Success")
+                    Log.i(TAG, "✅ $dataName 数据获取成功")
+                }
+                is AgentResult.Error -> {
+                    stateFlow.value = UiState.Error(result.message)
+                    setAgentUiState(agentType, "Error")
+                    setResultData(result.message)
+                    Log.e(TAG, "❌ $dataName 数据获取失败: ${result.message}")
+                }
+                is AgentResult.Loading -> {
+                    Log.i(TAG, "⏳ $dataName 数据加载中...")
+                }
+            }
+        }
+    }
+
+    fun resetCurrentAgentState() {
+        val agentType = _selectedAgent.value
+        when (agentType) {
+            AgentType.WEATHER -> {
+                _weatherState.value = UiState.Idle
+                setAgentUiState(agentType, "Idle")
+            }
+            AgentType.HOTEL -> {
+                _hotelState.value = UiState.Idle
+                setAgentUiState(agentType, "Idle")
+            }
+            AgentType.RESTAURANT -> {
+                _restaurantState.value = UiState.Idle
+                setAgentUiState(agentType, "Idle")
+            }
+            AgentType.ATTRACTION -> {
+                _attractionState.value = UiState.Idle
+                setAgentUiState(agentType, "Idle")
+            }
+            AgentType.ALL -> {
+                _allInOneState.value = UiState.Idle
+                setAgentUiState(agentType, "Idle")
+            }
+        }
+        _resultData.value = ""
+        Log.i(TAG, "🔄 已重置 [$agentType] 状态")
     }
 
     private fun fetchAllInOne() {
@@ -327,138 +390,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchWeather() {
-        weatherJob?.cancel()
-        weatherJob = viewModelScope.launch {
-            _weatherState.value = UiState.Loading
-            setAgentUiState(AgentType.WEATHER, "Loading")
-            val result = cachedRepository.fetchWeather(
-                destination = _destination.value,
-                days = _days.value,
-                startDate = _startDate.value,
-                endDate = _endDate.value,
-                preferences = _preferences.value
-            )
-            when (result) {
-                is AgentResult.Success -> {
-                    _weatherData.value = result.data
-                    _weatherState.value = UiState.Success(result.data)
-                    setAgentUiState(AgentType.WEATHER, "Success")
-                    Log.i(TAG, "✅ 天气数据获取成功: ${result.data.size} 天")
-                }
-                is AgentResult.Error -> {
-                    _weatherState.value = UiState.Error(result.message)
-                    setAgentUiState(AgentType.WEATHER, "Error")
-                    setResultData(result.message)
-                    Log.e(TAG, "❌ 天气数据获取失败: ${result.message}")
-                }
-                is AgentResult.Loading -> {
-                    Log.i(TAG, "⏳ 天气数据加载中...")
-                }
-            }
-        }
+        fetchData(
+            agentType = AgentType.WEATHER,
+            stateFlow = _weatherState,
+            fetchFunction = {
+                cachedRepository.fetchWeather(
+                    destination = _destination.value,
+                    days = _days.value,
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    preferences = _preferences.value
+                )
+            },
+            transform = { it },
+            onSuccess = { data ->
+                _weatherData.value = data
+            },
+            dataName = "天气"
+        )
     }
 
-
     private fun fetchHotels() {
-        hotelJob?.cancel()
-        hotelJob = viewModelScope.launch {
-            _hotelState.value = UiState.Loading
-            setAgentUiState(AgentType.HOTEL, "Loading")
-            val result = cachedRepository.fetchHotels(
-                destination = _destination.value,
-                days = _days.value,
-                startDate = _startDate.value,
-                endDate = _endDate.value,
-                preferences = _preferences.value
-            )
-            when (result) {
-                is AgentResult.Success -> {
-                    val hotelData = result.data
-                    _hotelInfoList.value = hotelData.hotelInfoList
-                    _hotelData.value = hotelData.poiList
-                    _hotelState.value = UiState.Success(hotelData.poiList)
-                    setAgentUiState(AgentType.HOTEL, "Success")
-                    Log.i(TAG, "✅ 酒店数据获取成功: ${hotelData.poiList.size} 家酒店")
-                }
-                is AgentResult.Error -> {
-                    _hotelState.value = UiState.Error(result.message)
-                    setAgentUiState(AgentType.HOTEL, "Error")
-                    setResultData(result.message)
-                    Log.e(TAG, "❌ 酒店数据获取失败: ${result.message}")
-                }
-                is AgentResult.Loading -> {
-                    Log.i(TAG, "⏳ 酒店数据加载中...")
-                }
-            }
-        }
+        fetchData(
+            agentType = AgentType.HOTEL,
+            stateFlow = _hotelState,
+            fetchFunction = {
+                cachedRepository.fetchHotels(
+                    destination = _destination.value,
+                    days = _days.value,
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    preferences = _preferences.value
+                )
+            },
+            transform = { it.poiList },
+            onSuccess = { data ->
+                _hotelInfoList.value = data.hotelInfoList
+                _hotelData.value = data.poiList
+            },
+            dataName = "酒店"
+        )
     }
 
     private fun fetchRestaurants() {
-        restaurantJob?.cancel()
-        restaurantJob = viewModelScope.launch {
-            _restaurantState.value = UiState.Loading
-            setAgentUiState(AgentType.RESTAURANT, "Loading")
-            val result = cachedRepository.fetchRestaurants(
-                destination = _destination.value,
-                days = _days.value,
-                startDate = _startDate.value,
-                endDate = _endDate.value,
-                preferences = _preferences.value
-            )
-            when (result) {
-                is AgentResult.Success -> {
-                    val restaurantData = result.data
-                    _restaurantInfoList.value = restaurantData.restaurantInfoList
-                    _restaurantData.value = restaurantData.poiList
-                    _restaurantState.value = UiState.Success(restaurantData.poiList)
-                    setAgentUiState(AgentType.RESTAURANT, "Success")
-                    Log.i(TAG, "✅ 餐厅数据获取成功: ${restaurantData.poiList.size} 家餐厅")
-                }
-                is AgentResult.Error -> {
-                    _restaurantState.value = UiState.Error(result.message)
-                    setAgentUiState(AgentType.RESTAURANT, "Error")
-                    setResultData(result.message)
-                    Log.e(TAG, "❌ 餐厅数据获取失败: ${result.message}")
-                }
-                is AgentResult.Loading -> {
-                    Log.i(TAG, "⏳ 餐厅数据加载中...")
-                }
-            }
-        }
+        fetchData(
+            agentType = AgentType.RESTAURANT,
+            stateFlow = _restaurantState,
+            fetchFunction = {
+                cachedRepository.fetchRestaurants(
+                    destination = _destination.value,
+                    days = _days.value,
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    preferences = _preferences.value
+                )
+            },
+            transform = { it.poiList },
+            onSuccess = { data ->
+                _restaurantInfoList.value = data.restaurantInfoList
+                _restaurantData.value = data.poiList
+            },
+            dataName = "餐厅"
+        )
     }
 
     private fun fetchAttractions() {
-        attractionJob?.cancel()
-        attractionJob = viewModelScope.launch {
-            _attractionState.value = UiState.Loading
-            setAgentUiState(AgentType.ATTRACTION, "Loading")
-            val result = cachedRepository.fetchAttractions(
-                destination = _destination.value,
-                days = _days.value,
-                startDate = _startDate.value,
-                endDate = _endDate.value,
-                preferences = _preferences.value
-            )
-            when (result) {
-                is AgentResult.Success -> {
-                    val attractionData = result.data
-                    _spotInfoList.value = attractionData.spotInfoList
-                    _attractionData.value = attractionData.poiList
-                    _attractionState.value = UiState.Success(attractionData.poiList)
-                    setAgentUiState(AgentType.ATTRACTION, "Success")
-                    Log.i(TAG, "✅ 景点数据获取成功: ${attractionData.poiList.size} 个景点")
-                }
-                is AgentResult.Error -> {
-                    _attractionState.value = UiState.Error(result.message)
-                    setAgentUiState(AgentType.ATTRACTION, "Error")
-                    setResultData(result.message)
-                    Log.e(TAG, "❌ 景点数据获取失败: ${result.message}")
-                }
-                is AgentResult.Loading -> {
-                    Log.i(TAG, "⏳ 景点数据加载中...")
-                }
-            }
-        }
+        fetchData(
+            agentType = AgentType.ATTRACTION,
+            stateFlow = _attractionState,
+            fetchFunction = {
+                cachedRepository.fetchAttractions(
+                    destination = _destination.value,
+                    days = _days.value,
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    preferences = _preferences.value
+                )
+            },
+            transform = { it.poiList },
+            onSuccess = { data ->
+                _spotInfoList.value = data.spotInfoList
+                _attractionData.value = data.poiList
+            },
+            dataName = "景点"
+        )
     }
 
     /**
@@ -689,6 +704,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     suspend fun getCacheStats(): String {
         return cachedRepository.getCacheStats()
+    }
+
+    /**
+     * 保存用户自定义偏好标签到标签库
+     */
+    fun saveUserPreferenceTag(tag: String) {
+        if (tag.isBlank()) return
+        viewModelScope.launch {
+            preferenceTagRepository.saveUserTag(tag)
+            Log.i(TAG, "✅ 已保存偏好标签: $tag")
+        }
     }
 }
 

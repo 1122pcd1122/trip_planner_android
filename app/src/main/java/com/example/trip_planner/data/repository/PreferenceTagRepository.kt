@@ -49,4 +49,18 @@ class PreferenceTagRepository(private val tagDao: PreferenceTagDao) {
         tagDao.clearAllTags()
         tagDao.insertTags(defaultTags)
     }
+
+    suspend fun saveUserTag(label: String) {
+        if (label.isBlank()) return
+        val existing = tagDao.getTagByLabel(label)
+        if (existing != null) return
+        val newTag = PreferenceTagEntity(
+            id = "user_${System.currentTimeMillis()}",
+            label = label,
+            icon = "✨",
+            keywords = label,
+            category = "自定义"
+        )
+        tagDao.insertSingleTag(newTag)
+    }
 }

@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.trip_planner.data.local.entity.FavoriteEntity
@@ -262,39 +263,89 @@ fun TravelPlannerScreen(
 
             // 错误状态覆盖层
             if (isErrorThisTab) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(appColors.cardBackground.copy(alpha = 0.9f)),
-                    contentAlignment = Alignment.Center
+                ErrorRecoveryOverlay(
+                    errorMessage = ErrorUtils.getFriendlyErrorMessage(viewModel.resultData.value),
+                    onRetry = { viewModel.generateTripPlan() },
+                    onDismiss = { viewModel.resetCurrentAgentState() },
+                    appColors = appColors
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 错误恢复覆盖层
+ * 显示错误信息，提供重试和返回按钮
+ */
+@Composable
+fun ErrorRecoveryOverlay(
+    errorMessage: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    appColors: com.example.trip_planner.ui.theme.AppColors
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(appColors.cardBackground.copy(alpha = 0.95f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
+            shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(containerColor = appColors.cardBackground),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(24.dp)
+            ) {
+                Text(
+                    "⚠️",
+                    fontSize = 48.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "请求失败",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = appColors.textPrimary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    errorMessage,
+                    color = appColors.textSecondary,
+                    fontSize = 14.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(32.dp)
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.small,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = appColors.textSecondary
+                        )
                     ) {
-                        Text(
-                            "请求失败",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = appColors.textPrimary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            ErrorUtils.getFriendlyErrorMessage(viewModel.resultData.value),
-                            color = appColors.textSecondary,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { viewModel.generateTripPlan() },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = appColors.brandTeal,
-                                contentColor = Color.White
-                            ),
-                            shape = MaterialTheme.shapes.small
-                        ) {
-                            Text("重试")
-                        }
+                        Text("返回")
+                    }
+                    Button(
+                        onClick = onRetry,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = appColors.brandTeal,
+                            contentColor = Color.White
+                        ),
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text("重试")
                     }
                 }
             }
@@ -560,10 +611,18 @@ fun InputCard(
         }
 
         Button(
-            onClick = { viewModel.generateTripPlan() },
+            onClick = {
+                val currentAgentState = viewModel.getCurrentAgentUiState()
+                if (currentAgentState == "Loading") {
+                    viewModel.cancelCurrentRequest()
+                    viewModel.resetCurrentAgentState()
+                } else {
+                    viewModel.generateTripPlan()
+                }
+            },
             shape = MaterialTheme.shapes.small,
             colors = ButtonDefaults.buttonColors(
-                containerColor = appColors.brandTeal,
+                containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal,
                 contentColor = Color.White
             ),
             modifier = Modifier
@@ -572,11 +631,25 @@ fun InputCard(
             enabled = viewModel.destination.value.isNotBlank() && 
                       (viewModel.days.value.toIntOrNull() ?: 0) > 0
         ) {
-            Text(
-                "开始智能规划",
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp
-            )
+            if (viewModel.getCurrentAgentUiState() == "Loading") {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    "停止规划",
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp
+                )
+            } else {
+                Text(
+                    "开始智能规划",
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp
+                )
+            }
         }
     }
 }
@@ -648,6 +721,15 @@ fun WeatherInputCard(
     viewModel: MainViewModel,
     appColors: com.example.trip_planner.ui.theme.AppColors
 ) {
+    val selectedPrefs = remember { mutableStateListOf<String>() }
+    
+    LaunchedEffect(viewModel.preferences.value) {
+        selectedPrefs.clear()
+        if (viewModel.preferences.value.isNotEmpty()) {
+            selectedPrefs.addAll(viewModel.preferences.value.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -676,14 +758,41 @@ fun WeatherInputCard(
                 appColors = appColors
             )
 
+            PreferenceSearchSelector(
+                selectedPrefs = selectedPrefs,
+                viewModel = viewModel,
+                appColors = appColors,
+                agentType = AgentType.WEATHER
+            )
+
             Button(
-                onClick = { viewModel.generateTripPlan() },
+                onClick = {
+                    val currentAgentState = viewModel.getCurrentAgentUiState()
+                    if (currentAgentState == "Loading") {
+                        viewModel.cancelCurrentRequest()
+                        viewModel.resetCurrentAgentState()
+                    } else {
+                        viewModel.generateTripPlan()
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = appColors.brandTeal),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
+                ),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = viewModel.destination.value.isNotBlank()
             ) {
-                Text("获取天气", fontWeight = FontWeight.Bold)
+                if (viewModel.getCurrentAgentUiState() == "Loading") {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("停止获取", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("获取天气", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -831,6 +940,15 @@ fun HotelInputCard(
     viewModel: MainViewModel,
     appColors: com.example.trip_planner.ui.theme.AppColors
 ) {
+    val selectedPrefs = remember { mutableStateListOf<String>() }
+    
+    LaunchedEffect(viewModel.preferences.value) {
+        selectedPrefs.clear()
+        if (viewModel.preferences.value.isNotEmpty()) {
+            selectedPrefs.addAll(viewModel.preferences.value.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -859,14 +977,126 @@ fun HotelInputCard(
                 appColors = appColors
             )
 
+            PreferenceSearchSelector(
+                selectedPrefs = selectedPrefs,
+                viewModel = viewModel,
+                appColors = appColors,
+                agentType = AgentType.RESTAURANT
+            )
+
             Button(
-                onClick = { viewModel.generateTripPlan() },
+                onClick = {
+                    val currentAgentState = viewModel.getCurrentAgentUiState()
+                    if (currentAgentState == "Loading") {
+                        viewModel.cancelCurrentRequest()
+                        viewModel.resetCurrentAgentState()
+                    } else {
+                        viewModel.generateTripPlan()
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = appColors.brandTeal),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
+                ),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = viewModel.destination.value.isNotBlank()
             ) {
-                Text("推荐酒店", fontWeight = FontWeight.Bold)
+                if (viewModel.getCurrentAgentUiState() == "Loading") {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("停止推荐", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("推荐餐厅", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 景点输入卡片
+ */
+@Composable
+fun AttractionInputCard(
+    viewModel: MainViewModel,
+    appColors: com.example.trip_planner.ui.theme.AppColors
+) {
+    val selectedPrefs = remember { mutableStateListOf<String>() }
+    
+    LaunchedEffect(viewModel.preferences.value) {
+        selectedPrefs.clear()
+        if (viewModel.preferences.value.isNotEmpty()) {
+            selectedPrefs.addAll(viewModel.preferences.value.split(",").map { it.trim() }.filter { it.isNotEmpty() })
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = appColors.cardBackground),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            com.example.trip_planner.ui.components.CitySelector(
+                selectedCity = viewModel.destination.value,
+                onCitySelected = { viewModel.setDestination(it) },
+                appColors = appColors
+            )
+
+            com.example.trip_planner.ui.components.DateRangePicker(
+                startDate = viewModel.startDate.value,
+                endDate = viewModel.endDate.value,
+                onDateRangeSelected = { start: String, end: String ->
+                    viewModel.setStartDate(start)
+                    viewModel.setEndDate(end)
+                },
+                appColors = appColors
+            )
+
+            PreferenceSearchSelector(
+                selectedPrefs = selectedPrefs,
+                viewModel = viewModel,
+                appColors = appColors,
+                agentType = AgentType.ATTRACTION
+            )
+
+            Button(
+                onClick = {
+                    val currentAgentState = viewModel.getCurrentAgentUiState()
+                    if (currentAgentState == "Loading") {
+                        viewModel.cancelCurrentRequest()
+                        viewModel.resetCurrentAgentState()
+                    } else {
+                        viewModel.generateTripPlan()
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
+                ),
+                modifier = Modifier.fillMaxWidth(),
+                enabled = viewModel.destination.value.isNotBlank()
+            ) {
+                if (viewModel.getCurrentAgentUiState() == "Loading") {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("停止获取", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("获取酒店", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -935,55 +1165,6 @@ fun AttractionTabContent(
                         appColors = appColors
                     )
                 }
-            }
-        }
-    }
-}
-
-/**
- * 景点输入卡片
- */
-@Composable
-fun AttractionInputCard(
-    viewModel: MainViewModel,
-    appColors: com.example.trip_planner.ui.theme.AppColors
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = appColors.cardBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            com.example.trip_planner.ui.components.CitySelector(
-                selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.setDestination(it) },
-                appColors = appColors
-            )
-
-            com.example.trip_planner.ui.components.DateRangePicker(
-                startDate = viewModel.startDate.value,
-                endDate = viewModel.endDate.value,
-                onDateRangeSelected = { start: String, end: String ->
-                    viewModel.setStartDate(start)
-                    viewModel.setEndDate(end)
-                },
-                appColors = appColors
-            )
-
-            Button(
-                onClick = { viewModel.generateTripPlan() },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = appColors.brandTeal),
-                modifier = Modifier.fillMaxWidth(),
-                enabled = viewModel.destination.value.isNotBlank()
-            ) {
-                Text("推荐景点", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1109,17 +1290,38 @@ fun RestaurantInputCard(
             PreferenceSearchSelector(
                 selectedPrefs = selectedPrefs,
                 viewModel = viewModel,
-                appColors = appColors
+                appColors = appColors,
+                agentType = AgentType.HOTEL
             )
 
             Button(
-                onClick = { viewModel.generateTripPlan() },
+                onClick = {
+                    val currentAgentState = viewModel.getCurrentAgentUiState()
+                    if (currentAgentState == "Loading") {
+                        viewModel.cancelCurrentRequest()
+                        viewModel.resetCurrentAgentState()
+                    } else {
+                        viewModel.generateTripPlan()
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = appColors.brandTeal),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
+                ),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = viewModel.destination.value.isNotBlank()
             ) {
-                Text("推荐美食", fontWeight = FontWeight.Bold)
+                if (viewModel.getCurrentAgentUiState() == "Loading") {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("停止推荐", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("推荐美食", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -1239,13 +1441,33 @@ fun AllInOneInputCard(
             )
 
             Button(
-                onClick = { viewModel.generateTripPlan() },
+                onClick = {
+                    val currentAgentState = viewModel.getCurrentAgentUiState()
+                    if (currentAgentState == "Loading") {
+                        viewModel.cancelCurrentRequest()
+                        viewModel.resetCurrentAgentState()
+                    } else {
+                        viewModel.generateTripPlan()
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = appColors.brandTeal),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
+                ),
                 modifier = Modifier.fillMaxWidth(),
                 enabled = viewModel.destination.value.isNotBlank()
             ) {
-                Text("开始规划", fontWeight = FontWeight.Bold)
+                if (viewModel.getCurrentAgentUiState() == "Loading") {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("停止规划", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("开始规划", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -1969,21 +2191,38 @@ fun FlowLayout(
 data class PreferenceTag(val icon: String, val label: String, val category: TagCategory)
 
 enum class TagCategory(val title: String, val icon: String) {
-    HOTEL("酒店", "🏨"),
-    RESTAURANT("餐饮", "🍽️"),
-    ATTRACTION("景点", "🏛️"),
-    GENERAL("通用", "✨")
+    BUDGET("预算", "💰"),
+    HOTEL("酒店类型", "🏨"),
+    RESTAURANT("餐饮风味", "🍽️"),
+    ATTRACTION("景点偏好", "🏛️"),
+    TRANSPORT("交通方式", "🚗"),
+    PACE("行程节奏", "⏱️"),
+    GENERAL("通用偏好", "✨")
 }
 
 val PREFERENCE_TAGS = listOf(
-    PreferenceTag("💰", "经济型", TagCategory.HOTEL),
+    PreferenceTag("💸", "100元/天", TagCategory.BUDGET),
+    PreferenceTag("💰", "300元/天", TagCategory.BUDGET),
+    PreferenceTag("💵", "500元/天", TagCategory.BUDGET),
+    PreferenceTag("💎", "1000元/天", TagCategory.BUDGET),
+    PreferenceTag("👑", "不限预算", TagCategory.BUDGET),
+    PreferenceTag("🎒", "穷游", TagCategory.BUDGET),
+    PreferenceTag("💳", "性价比", TagCategory.BUDGET),
+    
+    PreferenceTag("🏠", "经济型", TagCategory.HOTEL),
     PreferenceTag("🏨", "舒适型", TagCategory.HOTEL),
     PreferenceTag("💎", "高档型", TagCategory.HOTEL),
     PreferenceTag("👑", "豪华型", TagCategory.HOTEL),
+    PreferenceTag("🏡", "民宿", TagCategory.HOTEL),
+    PreferenceTag("🏕️", "青旅", TagCategory.HOTEL),
     PreferenceTag("👨‍👩‍👧‍👦", "亲子酒店", TagCategory.HOTEL),
+    PreferenceTag("💑", "情侣酒店", TagCategory.HOTEL),
     PreferenceTag("🚇", "近地铁", TagCategory.HOTEL),
     PreferenceTag("🍳", "含早餐", TagCategory.HOTEL),
     PreferenceTag("🅿️", "停车场", TagCategory.HOTEL),
+    PreferenceTag("🏊", "带泳池", TagCategory.HOTEL),
+    PreferenceTag("💪", "健身房", TagCategory.HOTEL),
+    PreferenceTag("🌅", "景观房", TagCategory.HOTEL),
     
     PreferenceTag("🌶️", "不吃辣", TagCategory.RESTAURANT),
     PreferenceTag("🥬", "素食", TagCategory.RESTAURANT),
@@ -1993,6 +2232,17 @@ val PREFERENCE_TAGS = listOf(
     PreferenceTag("🍱", "日料", TagCategory.RESTAURANT),
     PreferenceTag("🌮", "西餐", TagCategory.RESTAURANT),
     PreferenceTag("⭐", "老字号", TagCategory.RESTAURANT),
+    PreferenceTag("🦐", "海鲜", TagCategory.RESTAURANT),
+    PreferenceTag("🍜", "面食", TagCategory.RESTAURANT),
+    PreferenceTag("🥩", "烤肉", TagCategory.RESTAURANT),
+    PreferenceTag("🍕", "快餐", TagCategory.RESTAURANT),
+    PreferenceTag("🍰", "甜品", TagCategory.RESTAURANT),
+    PreferenceTag("🍵", "清淡", TagCategory.RESTAURANT),
+    PreferenceTag("🌿", "有机", TagCategory.RESTAURANT),
+    PreferenceTag("🍺", "夜宵", TagCategory.RESTAURANT),
+    PreferenceTag("💰", "人均50内", TagCategory.RESTAURANT),
+    PreferenceTag("💵", "人均100内", TagCategory.RESTAURANT),
+    PreferenceTag("💎", "人均200+", TagCategory.RESTAURANT),
     
     PreferenceTag("🏔️", "自然风光", TagCategory.ATTRACTION),
     PreferenceTag("🏛️", "人文历史", TagCategory.ATTRACTION),
@@ -2001,7 +2251,37 @@ val PREFERENCE_TAGS = listOf(
     PreferenceTag("💑", "情侣约会", TagCategory.ATTRACTION),
     PreferenceTag("📸", "拍照打卡", TagCategory.ATTRACTION),
     PreferenceTag("🚶", "轻松休闲", TagCategory.ATTRACTION),
-    PreferenceTag("🧗", "体力挑战", TagCategory.ATTRACTION)
+    PreferenceTag("🧗", "体力挑战", TagCategory.ATTRACTION),
+    PreferenceTag("🎭", "文化体验", TagCategory.ATTRACTION),
+    PreferenceTag("🛍️", "购物", TagCategory.ATTRACTION),
+    PreferenceTag("🎪", "演出展览", TagCategory.ATTRACTION),
+    PreferenceTag("🏖️", "海滩度假", TagCategory.ATTRACTION),
+    PreferenceTag("🌸", "赏花", TagCategory.ATTRACTION),
+    PreferenceTag("🎿", "滑雪", TagCategory.ATTRACTION),
+    PreferenceTag("🚣", "水上活动", TagCategory.ATTRACTION),
+    
+    PreferenceTag("🚶", "步行", TagCategory.TRANSPORT),
+    PreferenceTag("🚌", "公交", TagCategory.TRANSPORT),
+    PreferenceTag("🚇", "地铁", TagCategory.TRANSPORT),
+    PreferenceTag("🚕", "打车", TagCategory.TRANSPORT),
+    PreferenceTag("🚗", "租车自驾", TagCategory.TRANSPORT),
+    PreferenceTag("🚲", "骑行", TagCategory.TRANSPORT),
+    PreferenceTag("🛵", "电动车", TagCategory.TRANSPORT),
+    
+    PreferenceTag("🐌", "慢节奏", TagCategory.PACE),
+    PreferenceTag("🚶", "适中", TagCategory.PACE),
+    PreferenceTag("🏃", "特种兵", TagCategory.PACE),
+    PreferenceTag("😴", "睡到自然醒", TagCategory.PACE),
+    PreferenceTag("📅", "行程紧凑", TagCategory.PACE),
+    PreferenceTag("🌅", "早起", TagCategory.PACE),
+    PreferenceTag("🌙", "夜猫子", TagCategory.PACE),
+    
+    PreferenceTag("📷", "摄影", TagCategory.GENERAL),
+    PreferenceTag("🎁", "伴手礼", TagCategory.GENERAL),
+    PreferenceTag("🐕", "宠物友好", TagCategory.GENERAL),
+    PreferenceTag("♿", "无障碍", TagCategory.GENERAL),
+    PreferenceTag("👶", "婴儿车", TagCategory.GENERAL),
+    PreferenceTag("🎒", "背包客", TagCategory.GENERAL)
 )
 
 /**
@@ -2020,34 +2300,68 @@ val POPULAR_DESTINATIONS = listOf(
     "桂林" to "⛰️"
 )
 
+val AGENT_TAG_MAP = mapOf(
+    AgentType.HOTEL to listOf(TagCategory.HOTEL, TagCategory.BUDGET),
+    AgentType.RESTAURANT to listOf(TagCategory.RESTAURANT, TagCategory.BUDGET),
+    AgentType.ATTRACTION to listOf(TagCategory.ATTRACTION),
+    AgentType.WEATHER to listOf(TagCategory.PACE, TagCategory.GENERAL),
+    AgentType.ALL to TagCategory.entries
+)
+
 @Composable
 fun PreferenceSearchSelector(
     selectedPrefs: MutableList<String>,
     viewModel: MainViewModel,
-    appColors: com.example.trip_planner.ui.theme.AppColors
+    appColors: com.example.trip_planner.ui.theme.AppColors,
+    agentType: AgentType = AgentType.ALL
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var isExpanded by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
+    var selectedParentCategory by remember { mutableStateOf<TagCategory?>(null) }
     val allTags = remember { PREFERENCE_TAGS }
+    val relevantCategories = remember { AGENT_TAG_MAP[agentType] ?: TagCategory.entries }
 
-    val filteredTags = remember(searchQuery, allTags) {
+    val filteredTags = remember(searchQuery, allTags, relevantCategories) {
+        val base = allTags.filter { it.category in relevantCategories }
         if (searchQuery.isBlank()) {
-            allTags
+            base
         } else {
-            allTags.filter {
+            base.filter {
                 it.label.contains(searchQuery, ignoreCase = true) ||
                 it.icon.contains(searchQuery, ignoreCase = true)
             }
         }
     }
 
+    LaunchedEffect(relevantCategories) {
+        selectedParentCategory = relevantCategories.firstOrNull()
+    }
+
+    val currentSubTags = remember(selectedParentCategory, filteredTags) {
+        if (selectedParentCategory == null) {
+            emptyList()
+        } else {
+            filteredTags.filter { it.category == selectedParentCategory }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (selectedPrefs.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("已选标签", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = appColors.brandTeal)
+                TextButton(onClick = {
+                    selectedPrefs.clear()
+                    viewModel.setPreferences("")
+                }) {
+                    Text("清空", fontSize = 11.sp, color = appColors.textSecondary)
+                }
+            }
             FlowLayout(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -2066,13 +2380,14 @@ fun PreferenceSearchSelector(
                         },
                         label = { Text(tag, fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = appColors.brandTeal.copy(alpha = 0.15f),
+                            selectedContainerColor = appColors.brandTeal.copy(alpha = 0.12f),
                             selectedLabelColor = appColors.brandTeal
                         ),
                         border = FilterChipDefaults.filterChipBorder(
                             enabled = true,
                             selected = true,
-                            borderColor = appColors.brandTeal
+                            borderColor = appColors.brandTeal,
+                            borderWidth = 1.dp
                         ),
                         trailingIcon = {
                             Icon(
@@ -2087,65 +2402,145 @@ fun PreferenceSearchSelector(
             }
         }
 
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { 
-                searchQuery = it
-                isExpanded = it.isNotEmpty() || selectedPrefs.isEmpty()
-            },
-            placeholder = { Text("搜索偏好标签...", color = appColors.textSecondary, fontSize = 12.sp) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = appColors.brandTeal, modifier = Modifier.size(18.dp)) },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Close, contentDescription = "清除", tint = appColors.textSecondary, modifier = Modifier.size(18.dp))
+        if (searchQuery.isBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("分类", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = appColors.textPrimary)
+                Spacer(modifier = Modifier.width(8.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(relevantCategories) { category ->
+                        val isSelected = selectedParentCategory == category
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) appColors.brandTeal.copy(alpha = 0.15f) else appColors.softBackground,
+                            border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) appColors.brandTeal else appColors.divider),
+                            modifier = Modifier.clickable { selectedParentCategory = category }
+                        ) {
+                            Text(
+                                "${category.icon} ${category.title}",
+                                fontSize = 11.sp,
+                                color = if (isSelected) appColors.brandTeal else appColors.textSecondary,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
-            },
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = appColors.brandTeal,
-                unfocusedBorderColor = appColors.softBackground,
-                focusedContainerColor = appColors.softBackground,
-                unfocusedContainerColor = appColors.softBackground
-            ),
-            singleLine = true,
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp)
-        )
+            }
 
-        if (isExpanded && filteredTags.isNotEmpty()) {
-            FlowLayout(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                filteredTags.forEach { tag ->
-                    val isSelected = selectedPrefs.contains(tag.label)
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            if (isSelected) {
-                                selectedPrefs.remove(tag.label)
-                            } else {
-                                selectedPrefs.add(tag.label)
-                            }
-                            viewModel.setPreferences(selectedPrefs.joinToString(","))
-                        },
-                        leadingIcon = { Text(tag.icon, fontSize = 12.sp) },
-                        label = { Text(tag.label, fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = appColors.brandTeal.copy(alpha = 0.15f),
-                            selectedLabelColor = appColors.brandTeal,
-                            containerColor = appColors.softBackground,
-                            labelColor = appColors.textSecondary
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
+            if (currentSubTags.isNotEmpty()) {
+                Text(selectedParentCategory?.let { "${it.icon} ${it.title}" } ?: "", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = appColors.textPrimary)
+                FlowLayout(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    currentSubTags.forEach { tag ->
+                        val isSelected = selectedPrefs.contains(tag.label)
+                        FilterChip(
                             selected = isSelected,
-                            borderColor = if (isSelected) appColors.brandTeal else appColors.softBackground
+                            onClick = {
+                                if (isSelected) {
+                                    selectedPrefs.remove(tag.label)
+                                } else {
+                                    selectedPrefs.add(tag.label)
+                                }
+                                viewModel.setPreferences(selectedPrefs.joinToString(","))
+                            },
+                            leadingIcon = { Text(tag.icon, fontSize = 13.sp) },
+                            label = { Text(tag.label, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = appColors.brandTeal.copy(alpha = 0.15f),
+                                selectedLabelColor = appColors.brandTeal,
+                                containerColor = appColors.softBackground,
+                                labelColor = appColors.textSecondary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isSelected,
+                                borderColor = if (isSelected) appColors.brandTeal else appColors.divider
+                            )
                         )
-                    )
+                    }
+                }
+            }
+        } else {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("搜索标签...", color = appColors.textSecondary, fontSize = 12.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = appColors.brandTeal, modifier = Modifier.size(18.dp)) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (allTags.none { it.label == searchQuery }) {
+                                TextButton(
+                                    onClick = {
+                                        selectedPrefs.add(searchQuery)
+                                        viewModel.setPreferences(selectedPrefs.joinToString(","))
+                                        viewModel.saveUserPreferenceTag(searchQuery)
+                                        searchQuery = ""
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Text("+ 添加", fontSize = 12.sp, color = appColors.brandTeal, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "清除", tint = appColors.textSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = appColors.brandTeal,
+                    unfocusedBorderColor = appColors.divider,
+                    focusedContainerColor = appColors.cardBackground,
+                    unfocusedContainerColor = appColors.cardBackground
+                ),
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp)
+            )
+
+            if (filteredTags.isNotEmpty()) {
+                FlowLayout(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    filteredTags.forEach { tag ->
+                        val isSelected = selectedPrefs.contains(tag.label)
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                if (isSelected) {
+                                    selectedPrefs.remove(tag.label)
+                                } else {
+                                    selectedPrefs.add(tag.label)
+                                }
+                                viewModel.setPreferences(selectedPrefs.joinToString(","))
+                            },
+                            leadingIcon = { Text(tag.icon, fontSize = 13.sp) },
+                            label = { Text(tag.label, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = appColors.brandTeal.copy(alpha = 0.15f),
+                                selectedLabelColor = appColors.brandTeal,
+                                containerColor = appColors.softBackground,
+                                labelColor = appColors.textSecondary
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isSelected,
+                                borderColor = if (isSelected) appColors.brandTeal else appColors.divider
+                            )
+                        )
+                    }
                 }
             }
         }
