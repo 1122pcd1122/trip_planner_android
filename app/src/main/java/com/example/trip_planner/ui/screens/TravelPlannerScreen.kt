@@ -743,19 +743,19 @@ fun WeatherInputCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             com.example.trip_planner.ui.components.CitySelector(
-                selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.setDestination(it) },
+                selectedCity = viewModel.getAgentDestination(AgentType.WEATHER),
+                onCitySelected = { viewModel.setAgentDestination(AgentType.WEATHER, it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
-                startDate = viewModel.startDate.value,
-                endDate = viewModel.endDate.value,
+                startDate = viewModel.getAgentStartDate(AgentType.WEATHER),
+                endDate = viewModel.getAgentEndDate(AgentType.WEATHER),
                 onDateRangeSelected = { start: String, end: String ->
-                    viewModel.setStartDate(start)
-                    viewModel.setEndDate(end)
+                    viewModel.setAgentDateRange(AgentType.WEATHER, start, end)
                 },
-                appColors = appColors
+                appColors = appColors,
+                key = "weather"
             )
 
             PreferenceSearchSelector(
@@ -780,7 +780,7 @@ fun WeatherInputCard(
                     containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = viewModel.destination.value.isNotBlank()
+                enabled = viewModel.getAgentDestination(AgentType.WEATHER).isNotBlank()
             ) {
                 if (viewModel.getCurrentAgentUiState() == "Loading") {
                     CircularProgressIndicator(
@@ -962,19 +962,19 @@ fun HotelInputCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             com.example.trip_planner.ui.components.CitySelector(
-                selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.setDestination(it) },
+                selectedCity = viewModel.getAgentDestination(AgentType.RESTAURANT),
+                onCitySelected = { viewModel.setAgentDestination(AgentType.RESTAURANT, it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
-                startDate = viewModel.startDate.value,
-                endDate = viewModel.endDate.value,
+                startDate = viewModel.getAgentStartDate(AgentType.RESTAURANT),
+                endDate = viewModel.getAgentEndDate(AgentType.RESTAURANT),
                 onDateRangeSelected = { start: String, end: String ->
-                    viewModel.setStartDate(start)
-                    viewModel.setEndDate(end)
+                    viewModel.setAgentDateRange(AgentType.RESTAURANT, start, end)
                 },
-                appColors = appColors
+                appColors = appColors,
+                key = "restaurant"
             )
 
             PreferenceSearchSelector(
@@ -999,7 +999,7 @@ fun HotelInputCard(
                     containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = viewModel.destination.value.isNotBlank()
+                enabled = viewModel.getAgentDestination(AgentType.RESTAURANT).isNotBlank()
             ) {
                 if (viewModel.getCurrentAgentUiState() == "Loading") {
                     CircularProgressIndicator(
@@ -1047,19 +1047,19 @@ fun AttractionInputCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             com.example.trip_planner.ui.components.CitySelector(
-                selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.setDestination(it) },
+                selectedCity = viewModel.getAgentDestination(AgentType.ATTRACTION),
+                onCitySelected = { viewModel.setAgentDestination(AgentType.ATTRACTION, it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
-                startDate = viewModel.startDate.value,
-                endDate = viewModel.endDate.value,
+                startDate = viewModel.getAgentStartDate(AgentType.ATTRACTION),
+                endDate = viewModel.getAgentEndDate(AgentType.ATTRACTION),
                 onDateRangeSelected = { start: String, end: String ->
-                    viewModel.setStartDate(start)
-                    viewModel.setEndDate(end)
+                    viewModel.setAgentDateRange(AgentType.ATTRACTION, start, end)
                 },
-                appColors = appColors
+                appColors = appColors,
+                key = "attraction"
             )
 
             PreferenceSearchSelector(
@@ -1084,7 +1084,7 @@ fun AttractionInputCard(
                     containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = viewModel.destination.value.isNotBlank()
+                enabled = viewModel.getAgentDestination(AgentType.ATTRACTION).isNotBlank()
             ) {
                 if (viewModel.getCurrentAgentUiState() == "Loading") {
                     CircularProgressIndicator(
@@ -1272,19 +1272,19 @@ fun RestaurantInputCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             com.example.trip_planner.ui.components.CitySelector(
-                selectedCity = viewModel.destination.value,
-                onCitySelected = { viewModel.setDestination(it) },
+                selectedCity = viewModel.getAgentDestination(AgentType.HOTEL),
+                onCitySelected = { viewModel.setAgentDestination(AgentType.HOTEL, it) },
                 appColors = appColors
             )
 
             com.example.trip_planner.ui.components.DateRangePicker(
-                startDate = viewModel.startDate.value,
-                endDate = viewModel.endDate.value,
+                startDate = viewModel.getAgentStartDate(AgentType.HOTEL),
+                endDate = viewModel.getAgentEndDate(AgentType.HOTEL),
                 onDateRangeSelected = { start: String, end: String ->
-                    viewModel.setStartDate(start)
-                    viewModel.setEndDate(end)
+                    viewModel.setAgentDateRange(AgentType.HOTEL, start, end)
                 },
-                appColors = appColors
+                appColors = appColors,
+                key = "hotel"
             )
 
             PreferenceSearchSelector(
@@ -1309,7 +1309,7 @@ fun RestaurantInputCard(
                     containerColor = if (viewModel.getCurrentAgentUiState() == "Loading") Color.Red else appColors.brandTeal
                 ),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = viewModel.destination.value.isNotBlank()
+                enabled = viewModel.getAgentDestination(AgentType.HOTEL).isNotBlank()
             ) {
                 if (viewModel.getCurrentAgentUiState() == "Loading") {
                     CircularProgressIndicator(
@@ -2419,7 +2419,10 @@ fun PreferenceSearchSelector(
                             shape = RoundedCornerShape(16.dp),
                             color = if (isSelected) appColors.brandTeal.copy(alpha = 0.15f) else appColors.softBackground,
                             border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) appColors.brandTeal else appColors.divider),
-                            modifier = Modifier.clickable { selectedParentCategory = category }
+                            modifier = Modifier.clickable { 
+                                // 切换展开/关闭：已选中则关闭，否则展开
+                                selectedParentCategory = if (isSelected) null else category 
+                            }
                         ) {
                             Text(
                                 "${category.icon} ${category.title}",
@@ -2432,7 +2435,7 @@ fun PreferenceSearchSelector(
                 }
             }
 
-            if (currentSubTags.isNotEmpty()) {
+            if (selectedParentCategory != null && currentSubTags.isNotEmpty()) {
                 Text(selectedParentCategory?.let { "${it.icon} ${it.title}" } ?: "", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = appColors.textPrimary)
                 FlowLayout(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

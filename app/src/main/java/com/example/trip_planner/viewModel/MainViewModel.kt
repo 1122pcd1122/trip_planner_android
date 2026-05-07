@@ -60,6 +60,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _destination = MutableStateFlow("成都")
     val destination: StateFlow<String> = _destination.asStateFlow()
     
+    // 每个 Agent 独立的目的地状态
+    private val agentDestinations = mutableStateMapOf<AgentType, String>(
+        AgentType.ALL to "成都",
+        AgentType.WEATHER to "成都",
+        AgentType.HOTEL to "成都",
+        AgentType.RESTAURANT to "成都",
+        AgentType.ATTRACTION to "成都"
+    )
+    
+    fun getAgentDestination(agentType: AgentType): String {
+        return agentDestinations[agentType] ?: ""
+    }
+    
+    fun setAgentDestination(agentType: AgentType, value: String) {
+        agentDestinations[agentType] = value
+    }
+    
+    // 每个 Agent 独立的日期状态
+    private val agentStartDates = mutableStateMapOf<AgentType, String>()
+    private val agentEndDates = mutableStateMapOf<AgentType, String>()
+    
+    fun getAgentStartDate(agentType: AgentType): String {
+        return agentStartDates[agentType] ?: ""
+    }
+    
+    fun getAgentEndDate(agentType: AgentType): String {
+        return agentEndDates[agentType] ?: ""
+    }
+    
+    fun setAgentDateRange(agentType: AgentType, start: String, end: String) {
+        agentStartDates[agentType] = start
+        agentEndDates[agentType] = end
+    }
+    
     private val _days = MutableStateFlow("3")
     val days: StateFlow<String> = _days.asStateFlow()
     
@@ -249,15 +283,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchAllInOne() {
+        val agentType = AgentType.ALL
         allInOneJob?.cancel()
         allInOneJob = viewModelScope.launch {
             _allInOneState.value = UiState.Loading
-            setAgentUiState(AgentType.ALL, "Loading")
+            setAgentUiState(agentType, "Loading")
             val result = cachedRepository.fetchAllInOne(
-                destination = _destination.value,
+                destination = getAgentDestination(agentType),
                 days = _days.value,
-                startDate = _startDate.value,
-                endDate = _endDate.value,
+                startDate = getAgentStartDate(agentType),
+                endDate = getAgentEndDate(agentType),
                 preferences = _preferences.value
             )
             when (result) {
@@ -390,15 +425,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchWeather() {
+        val agentType = AgentType.WEATHER
         fetchData(
-            agentType = AgentType.WEATHER,
+            agentType = agentType,
             stateFlow = _weatherState,
             fetchFunction = {
                 cachedRepository.fetchWeather(
-                    destination = _destination.value,
+                    destination = getAgentDestination(agentType),
                     days = _days.value,
-                    startDate = _startDate.value,
-                    endDate = _endDate.value,
+                    startDate = getAgentStartDate(agentType),
+                    endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
                 )
             },
@@ -411,15 +447,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchHotels() {
+        val agentType = AgentType.HOTEL
         fetchData(
-            agentType = AgentType.HOTEL,
+            agentType = agentType,
             stateFlow = _hotelState,
             fetchFunction = {
                 cachedRepository.fetchHotels(
-                    destination = _destination.value,
+                    destination = getAgentDestination(agentType),
                     days = _days.value,
-                    startDate = _startDate.value,
-                    endDate = _endDate.value,
+                    startDate = getAgentStartDate(agentType),
+                    endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
                 )
             },
@@ -433,15 +470,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchRestaurants() {
+        val agentType = AgentType.RESTAURANT
         fetchData(
-            agentType = AgentType.RESTAURANT,
+            agentType = agentType,
             stateFlow = _restaurantState,
             fetchFunction = {
                 cachedRepository.fetchRestaurants(
-                    destination = _destination.value,
+                    destination = getAgentDestination(agentType),
                     days = _days.value,
-                    startDate = _startDate.value,
-                    endDate = _endDate.value,
+                    startDate = getAgentStartDate(agentType),
+                    endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
                 )
             },
@@ -455,15 +493,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchAttractions() {
+        val agentType = AgentType.ATTRACTION
         fetchData(
-            agentType = AgentType.ATTRACTION,
+            agentType = agentType,
             stateFlow = _attractionState,
             fetchFunction = {
                 cachedRepository.fetchAttractions(
-                    destination = _destination.value,
+                    destination = getAgentDestination(agentType),
                     days = _days.value,
-                    startDate = _startDate.value,
-                    endDate = _endDate.value,
+                    startDate = getAgentStartDate(agentType),
+                    endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
                 )
             },

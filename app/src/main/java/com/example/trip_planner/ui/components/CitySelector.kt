@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
@@ -13,15 +14,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
 /**
- * 城市选择器（极简现代风）
+ * 城市选择器（支持输入和选择）
  */
 @Composable
 fun CitySelector(
@@ -29,8 +28,13 @@ fun CitySelector(
     onCitySelected: (String) -> Unit,
     appColors: com.example.trip_planner.ui.theme.AppColors
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    var inputText by remember { mutableStateOf(selectedCity) }
     var showDropdown by remember { mutableStateOf(false) }
+
+    // 同步外部选中值
+    LaunchedEffect(selectedCity) {
+        inputText = selectedCity
+    }
 
     val allCities = remember {
         listOf(
@@ -41,58 +45,50 @@ fun CitySelector(
         )
     }
 
-    val filteredCities = remember(searchQuery, allCities) {
-        if (searchQuery.isBlank()) {
+    val filteredCities = remember(inputText, allCities) {
+        if (inputText.isBlank()) {
             allCities
         } else {
             allCities.filter { city ->
-                city.contains(searchQuery, ignoreCase = true)
+                city.contains(inputText, ignoreCase = true)
             }
         }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { 
-                    showDropdown = true
-                }
-        ) {
-            OutlinedTextField(
-                value = if (selectedCity.isNotEmpty() && searchQuery.isEmpty()) selectedCity else searchQuery,
-                onValueChange = { 
-                    searchQuery = it
-                    showDropdown = it.isNotEmpty()
-                },
-                placeholder = { Text("搜索或选择城市", color = appColors.textSecondary, fontSize = 13.sp) },
-                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = appColors.brandTeal, modifier = Modifier.size(18.dp)) },
-                trailingIcon = {
-                    if (selectedCity.isNotEmpty() && searchQuery.isEmpty()) {
-                        IconButton(onClick = { 
-                            onCitySelected("")
-                            showDropdown = true
-                        }) {
-                            Icon(Icons.Default.Close, contentDescription = "清除", tint = appColors.textSecondary, modifier = Modifier.size(16.dp))
-                        }
+        OutlinedTextField(
+            value = inputText,
+            onValueChange = { newText ->
+                inputText = newText
+                showDropdown = newText.isNotEmpty()
+                onCitySelected(newText)
+            },
+            placeholder = { Text("搜索或输入城市", color = appColors.textSecondary, fontSize = 13.sp) },
+            leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = appColors.brandTeal, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (inputText.isNotEmpty()) {
+                    IconButton(onClick = {
+                        inputText = ""
+                        showDropdown = false
+                        onCitySelected("")
+                    }) {
+                        Icon(Icons.Default.Close, contentDescription = "清除", tint = appColors.textSecondary, modifier = Modifier.size(16.dp))
                     }
-                },
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = appColors.divider,
-                    unfocusedBorderColor = appColors.divider,
-                    focusedContainerColor = appColors.cardBackground,
-                    unfocusedContainerColor = appColors.cardBackground
-                ),
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 13.sp),
-                readOnly = true,
-                enabled = false
-            )
-        }
+                }
+            },
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = appColors.brandTeal,
+                unfocusedBorderColor = appColors.divider,
+                focusedContainerColor = appColors.cardBackground,
+                unfocusedContainerColor = appColors.cardBackground
+            ),
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp)
+        )
 
-        if (showDropdown && filteredCities.isNotEmpty()) {
+        if (showDropdown && inputText.isNotEmpty() && filteredCities.isNotEmpty()) {
             Popup(
                 alignment = Alignment.TopStart,
                 properties = PopupProperties(focusable = true, dismissOnBackPress = true, dismissOnClickOutside = true),
@@ -117,8 +113,8 @@ fun CitySelector(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
+                                        inputText = city
                                         onCitySelected(city)
-                                        searchQuery = ""
                                         showDropdown = false
                                     }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -132,7 +128,7 @@ fun CitySelector(
                                 if (city == selectedCity) {
                                     Spacer(modifier = Modifier.weight(1f))
                                     Icon(
-                                        Icons.Default.LocationOn,
+                                        Icons.Default.Check,
                                         contentDescription = null,
                                         tint = appColors.brandTeal,
                                         modifier = Modifier.size(16.dp)
