@@ -94,6 +94,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         agentEndDates[agentType] = end
     }
     
+    // 根据开始日期和结束日期计算天数
+    fun calculateDays(agentType: AgentType): String {
+        val start = getAgentStartDate(agentType)
+        val end = getAgentEndDate(agentType)
+        
+        return if (start.isNotEmpty() && end.isNotEmpty()) {
+            try {
+                val startDt = java.time.LocalDate.parse(start)
+                val endDt = java.time.LocalDate.parse(end)
+                java.time.temporal.ChronoUnit.DAYS.between(startDt, endDt).plus(1).toString()
+            } catch (e: Exception) {
+                _days.value
+            }
+        } else {
+            _days.value
+        }
+    }
+    
     private val _days = MutableStateFlow("3")
     val days: StateFlow<String> = _days.asStateFlow()
     
@@ -290,7 +308,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             setAgentUiState(agentType, "Loading")
             val result = cachedRepository.fetchAllInOne(
                 destination = getAgentDestination(agentType),
-                days = _days.value,
+                days = calculateDays(agentType),
                 startDate = getAgentStartDate(agentType),
                 endDate = getAgentEndDate(agentType),
                 preferences = _preferences.value
@@ -432,7 +450,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fetchFunction = {
                 cachedRepository.fetchWeather(
                     destination = getAgentDestination(agentType),
-                    days = _days.value,
+                    days = calculateDays(agentType),
                     startDate = getAgentStartDate(agentType),
                     endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
@@ -454,7 +472,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fetchFunction = {
                 cachedRepository.fetchHotels(
                     destination = getAgentDestination(agentType),
-                    days = _days.value,
+                    days = calculateDays(agentType),
                     startDate = getAgentStartDate(agentType),
                     endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
@@ -477,7 +495,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fetchFunction = {
                 cachedRepository.fetchRestaurants(
                     destination = getAgentDestination(agentType),
-                    days = _days.value,
+                    days = calculateDays(agentType),
                     startDate = getAgentStartDate(agentType),
                     endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
@@ -500,7 +518,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             fetchFunction = {
                 cachedRepository.fetchAttractions(
                     destination = getAgentDestination(agentType),
-                    days = _days.value,
+                    days = calculateDays(agentType),
                     startDate = getAgentStartDate(agentType),
                     endDate = getAgentEndDate(agentType),
                     preferences = _preferences.value
