@@ -1,70 +1,74 @@
 package com.example.trip_planner.network
 
-
 import com.google.gson.Gson
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/**
- * 网络客户端配置对象
- * 
- * 负责创建和配置 Retrofit 实例，统一管理网络请求配置
- * 
- * 主要功能：
- * - 配置 OkHttpClient（连接超时、读取超时、日志拦截器）
- * - 配置 Retrofit（基础URL、Gson转换器）
- * - 提供 TripApiService 单例供 Repository 使用
- * 
- * 使用方式：直接通过 NetworkClient.tripApiService 获取 API 服务实例
- */
 object NetworkClient {
 
-    /** API 基础URL - 指向本地模拟器的后端服务器 */
     private const val BASE_URL = "http://10.0.2.2:8000"
+    private const val CONNECT_TIMEOUT_SECONDS = 30L
+    private const val READ_TIMEOUT_SECONDS = 120L
+    private const val WRITE_TIMEOUT_SECONDS = 30L
+    private const val MAX_RETRY_COUNT = 3
+    private const val RETRY_DELAY_MILLIS = 1000L
 
-    /** 网络超时时间（秒）- 后端响应较慢，设置为 300 秒 */
-    private const val TIMEOUT_SECONDS = 300L
-
-    /**
-     * HTTP 日志拦截器
-     * 
-     * 用于打印网络请求/响应的详细信息，方便调试
-     * Level.BODY 会打印完整的请求头、响应头和请求体
-     */
     private val loggingInterceptor by lazy {
         HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
     }
 
-    /**
-     * OkHttp 客户端配置
-     * 
-     * 配置说明：
-     * - connectTimeout: 30秒，连接服务器的最大等待时间
-     * - readTimeout: 30秒，读取响应的最大等待时间
-     * - writeTimeout: 30秒，发送请求的最大等待时间
-     * - addInterceptor: 添加日志拦截器用于调试
-     */
+    private val retryInterceptor by lazy {
+        okhttp3.Interceptor { chain ->
+            val request = chain.request()
+            var response: okhttp3.Response? = null
+            var exception: IOException? = null
+
+            for (attempt in 1..MAX_RETRY_COUNT) {
+                try {
+                    response?.close()
+                    response = chain.proceed(request)
+
+                    val currentResponse = response
+                    if (currentResponse != null && currentResponse.isSuccessful) {
+                        return@Interceptor currentResponse
+                    }
+
+                    if (currentResponse != null) {
+                        val code = currentResponse.code
+                        if (code >= 500 && code < 600 && attempt < MAX_RETRY_COUNT) {
+                            Thread.sleep(RETRY_DELAY_MILLIS * attempt)
+                            continue
+                        }
+                        return@Interceptor currentResponse
+                    }
+                } catch (e: IOException) {
+                    exception = e
+                    if (attempt < MAX_RETRY_COUNT) {
+                        Thread.sleep(RETRY_DELAY_MILLIS * attempt)
+                    }
+                }
+            }
+
+            throw exception ?: IOException("请求失败")
+        }
+    }
+
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .addInterceptor(loggingInterceptor)
+            .addInterceptor(retryInterceptor)
             .build()
     }
 
-    /**
-     * Retrofit 实例配置
-     * 
-     * - baseUrl: API 基础地址
-     * - client: 使用配置好的 OkHttpClient
-     * - addConverterFactory: 使用 Gson 进行 JSON 序列化/反序列化
-     */
     private val retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
@@ -73,13 +77,6 @@ object NetworkClient {
             .build()
     }
 
-    /**
-     * TripApiService 实例
-     * 
-     * 通过 Retrofit 创建 API 服务接口的实现类
-     * 供 Repository 层调用具体的 API 方法
-     */
     val tripApiService: TripApiService by lazy { retrofit.create(TripApiService::class.java) }
-
     val authApiService: AuthApiService by lazy { retrofit.create(AuthApiService::class.java) }
 }

@@ -22,6 +22,7 @@ import com.example.trip_planner.network.model.WeatherResponse
 import com.example.trip_planner.ui.screens.AgentType
 import com.example.trip_planner.ui.screens.PoiModel
 import com.example.trip_planner.ui.screens.PoiType
+import com.example.trip_planner.utils.DateUtils
 import com.example.trip_planner.utils.NetworkMonitor
 import com.example.trip_planner.utils.UserPreferences
 import com.google.android.gms.maps.model.LatLng
@@ -100,13 +101,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val end = getAgentEndDate(agentType)
         
         return if (start.isNotEmpty() && end.isNotEmpty()) {
-            try {
-                val startDt = java.time.LocalDate.parse(start)
-                val endDt = java.time.LocalDate.parse(end)
-                java.time.temporal.ChronoUnit.DAYS.between(startDt, endDt).plus(1).toString()
-            } catch (e: Exception) {
-                _days.value
-            }
+            DateUtils.calculateDays(start, end)
         } else {
             _days.value
         }
